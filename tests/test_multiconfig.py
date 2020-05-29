@@ -32,7 +32,7 @@ def test_default_value_without_subparsers():
     mc_parser.add_config("c1")
     mc_parser.add_config("c2", default="v2")
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c1": None, "c2": "v2",})
+    expected_values = namespace_from_dict({"c1": None, "c2": "v2"})
     assert values == expected_values
 
 
@@ -41,7 +41,7 @@ def test_default_value_from_config_default():
     mc_parser.add_config("c1")
     mc_parser.add_config("c2", default="v2")
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c1": "v1", "c2": "v2",})
+    expected_values = namespace_from_dict({"c1": "v1", "c2": "v2"})
     assert values == expected_values
 
 
@@ -50,7 +50,7 @@ def test_suppress():
     mc_parser.add_config("c1")
     mc_parser.add_config("c2", default="v2")
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c2": "v2",})
+    expected_values = namespace_from_dict({"c2": "v2"})
     assert values == expected_values
 
 
@@ -59,7 +59,7 @@ def test_required_config_not_found():
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2")
     with pytest.raises(mc.RequiredConfigNotFoundError):
-        values = mc_parser.parse_config()
+        mc_parser.parse_config()
 
 
 def test_required_config_found():
@@ -68,7 +68,7 @@ def test_required_config_found():
     mc_parser.add_config("c2")
     mc_parser.add_preparsed_values(namespace_from_dict({"c1": "v1"}))
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c1": "v1", "c2": None,})
+    expected_values = namespace_from_dict({"c1": "v1", "c2": None})
     assert values == expected_values
 
 
@@ -78,7 +78,7 @@ def test_partially_parse_config():
     mc_parser.add_config("c2")
     mc_parser.add_preparsed_values(namespace_from_dict({"c2": "v2"}))
     values = mc_parser.partially_parse_config()
-    expected_values = namespace_from_dict({"c1": None, "c2": "v2",})
+    expected_values = namespace_from_dict({"c1": None, "c2": "v2"})
     assert values == expected_values
 
 
@@ -97,7 +97,7 @@ def test_simple_argparse_subparser():
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
         values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
-        {"c1": "v1", "c2": "v2a", "c3": None, "c4": "v4",}
+        {"c1": "v1", "c2": "v2a", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
 
@@ -111,7 +111,7 @@ def test_simple_argparse_subparser_with_missing_required_config():
     mc_parser.add_subparser(mc.SimpleArgparseSubparser)
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
         with pytest.raises(mc.RequiredConfigNotFoundError):
-            values = mc_parser.parse_config()
+            mc_parser.parse_config()
 
 
 def test_simple_argparse_subparser_with_suppress():
@@ -123,7 +123,9 @@ def test_simple_argparse_subparser_with_suppress():
     mc_parser.add_subparser(mc.SimpleArgparseSubparser)
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
         values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c1": "v1", "c2": "v2a", "c4": "v4",})
+    expected_values = namespace_from_dict(
+        {"c1": "v1", "c2": "v2a", "c4": "v4"}
+    )
     assert values == expected_values
 
 
@@ -140,7 +142,7 @@ def test_simple_argparse_subparser_with_config_added_after_subparser():
     with utm.patch.object(sys, "argv", "prog --c1 v1".split()):
         values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
-        {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4",}
+        {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
 
@@ -165,7 +167,7 @@ def test_json_subparser():
     mc_parser.add_subparser(mc.JsonSubparser, fileobj=fileobj)
     values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
-        {"c1": "v1", "c2": "v2a", "c3": None, "c4": "v4",}
+        {"c1": "v1", "c2": "v2a", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
 
@@ -184,7 +186,7 @@ def test_json_subparser_with_missing_required_config():
     )
     mc_parser.add_subparser(mc.JsonSubparser, fileobj=fileobj)
     with pytest.raises(mc.RequiredConfigNotFoundError):
-        values = mc_parser.parse_config()
+        mc_parser.parse_config()
 
 
 def test_json_subparser_with_suppress():
@@ -201,7 +203,9 @@ def test_json_subparser_with_suppress():
     )
     mc_parser.add_subparser(mc.JsonSubparser, fileobj=fileobj)
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c1": "v1", "c2": "v2a", "c4": "v4",})
+    expected_values = namespace_from_dict(
+        {"c1": "v1", "c2": "v2a", "c4": "v4"}
+    )
     assert values == expected_values
 
 
@@ -220,7 +224,7 @@ def test_json_subparser_with_config_added_after_subparser():
     mc_parser.add_config("c4", default="v4")
     values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
-        {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4",}
+        {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
 
@@ -286,10 +290,10 @@ def test_has_nonnone_attr():
     setattr(obj, "c1", "v1")
     setattr(obj, "c2", None)
     setattr(obj, "c3", mc.NONE)
-    assert mc.has_nonnone_attr(obj, "c1") == True
-    assert mc.has_nonnone_attr(obj, "c2") == True
-    assert mc.has_nonnone_attr(obj, "c3") == False
-    assert mc.has_nonnone_attr(obj, "c4") == False
+    assert mc.has_nonnone_attr(obj, "c1")
+    assert mc.has_nonnone_attr(obj, "c2")
+    assert not mc.has_nonnone_attr(obj, "c3")
+    assert not mc.has_nonnone_attr(obj, "c4")
 
 
 def test_namespace():
@@ -303,5 +307,5 @@ def test_namespace():
     setattr(ns, "c3", "v3")
     setattr(ns, "c4", "v4")
     values = mc.namespace(ns, config_specs)
-    expected_values = namespace_from_dict({"c1": "v1", "c4": "v4",})
+    expected_values = namespace_from_dict({"c1": "v1", "c4": "v4"})
     assert values == expected_values

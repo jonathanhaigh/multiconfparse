@@ -165,7 +165,8 @@ class ConfigSpec:
     def _validate_name(name):
         if re.match(r"[^0-9A-Za-z_]", name) or re.match(r"^[^a-zA-Z_]", name):
             raise ValueError(
-                f"Invalid config name '{name}', must be a valid Python identifier"
+                f"Invalid config name '{name}', "
+                "must be a valid Python identifier"
             )
 
     @staticmethod
@@ -179,19 +180,25 @@ class ConfigSpec:
             "count",
             "extend",
         ):
-            raise NotImplementedError(f"action '{action}' has not been implemented")
+            raise NotImplementedError(
+                f"action '{action}' has not been implemented"
+            )
         if action != "store":
             raise ValueError(f"unknown action '{action}'")
 
     @staticmethod
     def _validate_nargs(nargs):
         if nargs is not None:
-            raise NotImplementedError("nargs argument has not been implemented")
+            raise NotImplementedError(
+                "nargs argument has not been implemented"
+            )
 
     @staticmethod
     def _validate_const(const):
         if const is not None:
-            raise NotImplementedError("const argument has not been implemented")
+            raise NotImplementedError(
+                "const argument has not been implemented"
+            )
 
     def parser_specific_options(self, parser_class):
         opts = {}
