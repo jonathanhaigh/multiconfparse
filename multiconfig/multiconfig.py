@@ -15,7 +15,10 @@ import re
 
 
 class RequiredConfigNotFoundError(RuntimeError):
-    pass
+    """
+    Exception raised when a required config value could not be found from any
+    source.
+    """
 
 
 # ------------------------------------------------------------------------------
@@ -66,7 +69,7 @@ class ArgparseSource:
                 nargs=spec.nargs,
                 const=spec.const,
                 default=NONE,
-                type=spec.type,
+                type=str,
                 help=spec.help,
                 **spec.source_specific_options(self.__class__),
             )
@@ -275,6 +278,7 @@ class ConfigParser:
         for spec in self._config_specs:
             value = getattr_or_none(preparsed_values, spec.name)
             if value is not NONE:
+                value = spec.type(value)
                 setattr(self._parsed_values, spec.name, value)
 
     def partially_parse_config(self):

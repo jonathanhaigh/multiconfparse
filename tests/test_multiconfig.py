@@ -7,6 +7,8 @@ from multiconfig import multiconfig as mc
 
 import argparse
 import io
+import json
+import pathlib
 import pytest
 import sys
 import unittest.mock as utm
@@ -21,6 +23,10 @@ def namespace_from_dict(d):
     for k, v in d.items():
         setattr(ns, k, v)
     return ns
+
+
+def split_str(s):
+    return s.split()
 
 
 # ------------------------------------------------------------------------------
@@ -96,6 +102,42 @@ def test_partially_parse_config():
     values = mc_parser.partially_parse_config()
     expected_values = namespace_from_dict({"c1": None, "c2": "v2"})
     assert values == expected_values
+
+
+def test_types():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", type=str)
+    mc_parser.add_config("c2", type=int)
+    mc_parser.add_config("c3", type=pathlib.Path)
+    mc_parser.add_config("c4", type=json.loads)
+    mc_parser.add_config("c5", type=split_str)
+    mc_parser.add_preparsed_values(
+        namespace_from_dict(
+            {
+                "c1": "v1",
+                "c2": "10",
+                "c3": "/some/path",
+                "c4": '{ "a": "va", "b": 10, "c": [ 1, 2, 3 ] }',
+                "c5": "word1 word2 word3",
+            }
+        )
+    )
+    values = mc_parser.parse_config()
+    expected_values = namespace_from_dict(
+        {
+            "c1": "v1",
+            "c2": 10,
+            "c3": pathlib.Path("/some/path"),
+            "c4": {"a": "va", "b": 10, "c": [1, 2, 3]},
+            "c5": ["word1", "word2", "word3"],
+        }
+    )
+    assert values == expected_values
+    assert isinstance(values.c1, str)
+    assert isinstance(values.c2, int)
+    assert isinstance(values.c3, pathlib.Path)
+    assert isinstance(values.c4, dict)
+    assert isinstance(values.c5, list)
 
 
 # ------------------------------------------------------------------------------
@@ -264,33 +306,33 @@ def test_json_source_with_config_added_after_source():
 
 def test_multiple_sources():
     mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2", default="v2")
-    mc_parser.add_config("c3")
-    mc_parser.add_config("c4", default="v4")
+    mc_parser.add_config("c1", type=int, required=True)
+    mc_parser.add_config("c2", type=str, default="v2")
+    mc_parser.add_config("c3", type=pathlib.Path)
+    mc_parser.add_config("c4", type=split_str, default="word1 word2".split())
     mc_parser.add_config("c5", required=True)
     mc_parser.add_config("c6", default="v6")
-    mc_parser.add_config("c7")
+    mc_parser.add_config("c7", type=json.loads)
     mc_parser.add_config("c8", default="v8")
     fileobj = io.StringIO(
         """{
-        "c1": "v1",
+        "c1": 10,
         "c2": "v2a"
     }"""
     )
     mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
     mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog --c5 v5 --c6 v6a".split()):
+    with utm.patch.object(sys, "argv", "prog --c5 v5 --c7 [1,2]".split()):
         values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
         {
-            "c1": "v1",
+            "c1": 10,
             "c2": "v2a",
             "c3": None,
-            "c4": "v4",
+            "c4": "word1 word2".split(),
             "c5": "v5",
-            "c6": "v6a",
-            "c7": None,
+            "c6": "v6",
+            "c7": [1, 2],
             "c8": "v8",
         }
     )
