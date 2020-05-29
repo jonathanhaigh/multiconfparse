@@ -83,9 +83,37 @@ class ArgparseSource:
 
 
 class SimpleArgparseSource(ArgparseSource):
-    def __init__(self, config_specs):
+    """
+    Obtains config values from the command line using argparse.ArgumentParser.
+
+    This class is simpler to use than ArgparseSource but does not allow adding
+    arguments beside those added to the ConfigParser.
+
+    Do not create objects of this class directly - create them via
+    ConfigParser.add_source() instead:
+    config_parser.add_source(multiconfig.SimpleArgparseSource, **options)
+
+    Extra options that can be passed to ConfigParser.add_source() for
+    SimpleArgparseSource are:
+    * argument_parser_class: a class derived from argparse.ArgumentParser to
+      use instead of ArgumentParser itself. This can be useful if you want to
+      override ArgumentParser's exit() or error() methods.
+
+    * Extra arguments to pass to ArgumentParser.__init__() (or the __init__()
+      method for the class specified by the 'argument_parser_class' option.
+      E.g.  'prog', 'allow_help'. You probably don't want to use the
+      'argument_default' option though - see ConfigParser.__init__()'s
+      'config_default' option instead.
+    """
+
+    def __init__(
+        self,
+        config_specs,
+        argument_parser_class=argparse.ArgumentParser,
+        **kwargs,
+    ):
         super().__init__(config_specs)
-        self._argparse_parser = argparse.ArgumentParser()
+        self._argparse_parser = argument_parser_class(**kwargs)
         super().add_configs_to_argparse_parser(self._argparse_parser)
 
     def parse_config(self):
@@ -94,6 +122,21 @@ class SimpleArgparseSource(ArgparseSource):
 
 
 class JsonSource:
+    """
+    Obtains config values from a JSON file.
+
+    Do not create objects of this class directly - create them via
+    ConfigParser.add_source() instead:
+    config_parser.add_source(multiconfig.JsonSource, **options)
+
+    Extra options that can be passed to ConfigParser.add_source() for
+    JsonSource are:
+    * path: path to the JSON file to parse.
+    * fileobj: a file object representing a stream of JSON data.
+
+    Note: exactly one of the 'path' and 'fileobj' options must be given.
+    """
+
     def __init__(self, config_specs, path=None, fileobj=None):
         self._config_specs = config_specs
         self._path = path

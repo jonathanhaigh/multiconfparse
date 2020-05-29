@@ -5,6 +5,7 @@
 
 from multiconfig import multiconfig as mc
 
+import argparse
 import io
 import pytest
 import sys
@@ -20,6 +21,21 @@ def namespace_from_dict(d):
     for k, v in d.items():
         setattr(ns, k, v)
     return ns
+
+
+# ------------------------------------------------------------------------------
+# Helper functions
+# ------------------------------------------------------------------------------
+
+
+class ArgparseError(RuntimeError):
+    pass
+
+
+class RaisingArgumentParser(argparse.ArgumentParser):
+    def exit(self, status=0, message=None):
+        if status:
+            raise ArgparseError(message)
 
 
 # ------------------------------------------------------------------------------
@@ -145,6 +161,18 @@ def test_simple_argparse_source_with_config_added_after_source():
         {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
+
+
+def test_simple_argparse_source_with_prog():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_source(
+        mc.SimpleArgparseSource,
+        argument_parser_class=RaisingArgumentParser,
+        prog="PROG_TEST",
+    )
+    with utm.patch.object(sys, "argv", "prog --c1 v1".split()):
+        with pytest.raises(ArgparseError, match="PROG_TEST"):
+            mc_parser.parse_config()
 
 
 # ------------------------------------------------------------------------------
