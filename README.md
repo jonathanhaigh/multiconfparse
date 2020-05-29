@@ -28,10 +28,10 @@ python -m pip install git+https://github.com/jonathanhaigh/multiconfig
    ```
    `ConfigParser`s:
    * contain the specifications of your configuration items;
-   * have "subparsers" that can obtain configuration values from different
-     sources;
-   * coordinate the parsing done by subparsers;
-   * merge configuration values from subparsers into a single set of values.
+   * have `source`s - objects that can obtain configuration values from
+     different sources;
+   * coordinate the parsing done by `source`s;
+   * merge configuration values from `source`s into a single set of values.
 
 1. Add specifications of your config items:
    ```python
@@ -40,15 +40,13 @@ python -m pip install git+https://github.com/jonathanhaigh/multiconfig
    config_parser.add_config("config_item2", default="default_value")
    ```
 
-1. Add subparsers/config sources:
+1. Add `source`s:
    ```python
-    config_parser.add_subparser(mc.SimpleArgparseSubparser)
-    config_parser.add_subparser(mc.JsonSubparser, "/path/to/config/file.json")
+    config_parser.add_source(mc.SimpleArgparseSource)
+    config_parser.add_source(mc.JsonSource, "/path/to/config/file.json")
     ```
-    Each subparser is responsible for obtaining config values from a particular
-    source.
 
-1. Parse all config sources:
+1. Parse config from all `source`s:
     ```python
     config = config_parser.parse_config()
     ```

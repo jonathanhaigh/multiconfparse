@@ -53,7 +53,7 @@ class Namespace:
     __repr__ = __str__
 
 
-class ArgparseSubparser:
+class ArgparseSource:
     def __init__(self, config_specs):
         self._config_specs = config_specs
         self._parsed_values = None
@@ -68,7 +68,7 @@ class ArgparseSubparser:
                 default=NONE,
                 type=spec.type,
                 help=spec.help,
-                **spec.parser_specific_options(self.__class__),
+                **spec.source_specific_options(self.__class__),
             )
 
     def notify_parsed_args(self, argparse_namespace):
@@ -82,7 +82,7 @@ class ArgparseSubparser:
         return f"--{config_name.replace('_', '-')}"
 
 
-class SimpleArgparseSubparser(ArgparseSubparser):
+class SimpleArgparseSource(ArgparseSource):
     def __init__(self, config_specs):
         super().__init__(config_specs)
         self._argparse_parser = argparse.ArgumentParser()
@@ -93,7 +93,7 @@ class SimpleArgparseSubparser(ArgparseSubparser):
         return super().parse_config()
 
 
-class JsonSubparser:
+class JsonSource:
     def __init__(self, config_specs, path=None, fileobj=None):
         self._config_specs = config_specs
         self._path = path
@@ -101,7 +101,7 @@ class JsonSubparser:
 
         if path and fileobj:
             raise ValueError(
-                "JsonSubparser's 'path' and 'fileobj' options were both "
+                "JsonSource's 'path' and 'fileobj' options were both "
                 "specified but only one is expected"
             )
 
@@ -132,7 +132,7 @@ class ConfigSpec:
         type=str,
         required=False,
         help=None,
-        parser_specific_options=None,
+        source_specific_options=None,
     ):
         self._name = name
         self._validate_name(name)
@@ -150,7 +150,7 @@ class ConfigSpec:
         self._type = type
         self._required = required
         self._help = help
-        self._parser_specific_options = parser_specific_options or {}
+        self._source_specific_options = source_specific_options or {}
 
     name = property(operator.attrgetter("_name"))
     action = property(operator.attrgetter("_action"))
@@ -200,18 +200,18 @@ class ConfigSpec:
                 "const argument has not been implemented"
             )
 
-    def parser_specific_options(self, parser_class):
+    def source_specific_options(self, source_class):
         opts = {}
-        for candidate in self._parser_specific_options:
-            if issubclass(candidate, parser_class):
-                opts.update(self._parser_specific_options[candidate])
+        for candidate in self._source_specific_options:
+            if issubclass(candidate, source_class):
+                opts.update(self._source_specific_options[candidate])
         return opts
 
 
 class ConfigParser:
     def __init__(self, config_default=NONE):
         self._config_specs = []
-        self._subparsers = []
+        self._sources = []
         self._parsed_values = Namespace()
         self._config_default = config_default
 
@@ -223,10 +223,10 @@ class ConfigParser:
         self._config_specs.append(spec)
         return spec
 
-    def add_subparser(self, subparser_class, **kwargs):
-        subparser = subparser_class(copy.copy(self._config_specs), **kwargs)
-        self._subparsers.append(subparser)
-        return subparser
+    def add_source(self, source_class, **kwargs):
+        source = source_class(copy.copy(self._config_specs), **kwargs)
+        self._sources.append(source)
+        return source
 
     def add_preparsed_values(self, preparsed_values):
         for spec in self._config_specs:
@@ -235,8 +235,8 @@ class ConfigParser:
                 setattr(self._parsed_values, spec.name, value)
 
     def partially_parse_config(self):
-        for parser in self._subparsers:
-            new_values = parser.parse_config()
+        for source in self._sources:
+            new_values = source.parse_config()
             self.add_preparsed_values(new_values)
         return self._get_configs_with_defaults()
 

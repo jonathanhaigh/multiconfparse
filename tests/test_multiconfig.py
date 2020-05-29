@@ -27,7 +27,7 @@ def namespace_from_dict(d):
 # ------------------------------------------------------------------------------
 
 
-def test_default_value_without_subparsers():
+def test_default_value_without_sources():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1")
     mc_parser.add_config("c2", default="v2")
@@ -83,17 +83,17 @@ def test_partially_parse_config():
 
 
 # ------------------------------------------------------------------------------
-# SimpleArgparseSubparser tests
+# SimpleArgparseSource tests
 # ------------------------------------------------------------------------------
 
 
-def test_simple_argparse_subparser():
+def test_simple_argparse_source():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2", default="v2")
     mc_parser.add_config("c3")
     mc_parser.add_config("c4", default="v4")
-    mc_parser.add_subparser(mc.SimpleArgparseSubparser)
+    mc_parser.add_source(mc.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
         values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
@@ -102,25 +102,25 @@ def test_simple_argparse_subparser():
     assert values == expected_values
 
 
-def test_simple_argparse_subparser_with_missing_required_config():
+def test_simple_argparse_source_with_missing_required_config():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1")
     mc_parser.add_config("c2", default="v2")
     mc_parser.add_config("c3", required=True)
     mc_parser.add_config("c4", default="v4")
-    mc_parser.add_subparser(mc.SimpleArgparseSubparser)
+    mc_parser.add_source(mc.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
         with pytest.raises(mc.RequiredConfigNotFoundError):
             mc_parser.parse_config()
 
 
-def test_simple_argparse_subparser_with_suppress():
+def test_simple_argparse_source_with_suppress():
     mc_parser = mc.ConfigParser(config_default=mc.SUPPRESS)
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2", default="v2")
     mc_parser.add_config("c3")
     mc_parser.add_config("c4", default="v4")
-    mc_parser.add_subparser(mc.SimpleArgparseSubparser)
+    mc_parser.add_source(mc.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
         values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
@@ -129,11 +129,11 @@ def test_simple_argparse_subparser_with_suppress():
     assert values == expected_values
 
 
-def test_simple_argparse_subparser_with_config_added_after_subparser():
+def test_simple_argparse_source_with_config_added_after_source():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2", default="v2")
-    mc_parser.add_subparser(mc.SimpleArgparseSubparser)
+    mc_parser.add_source(mc.SimpleArgparseSource)
     mc_parser.add_config("c3")
     mc_parser.add_config("c4", default="v4")
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c3 v3".split()):
@@ -148,11 +148,11 @@ def test_simple_argparse_subparser_with_config_added_after_subparser():
 
 
 # ------------------------------------------------------------------------------
-# JsonSubparser tests
+# JsonSource tests
 # ------------------------------------------------------------------------------
 
 
-def test_json_subparser():
+def test_json_source():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2", default="v2")
@@ -164,7 +164,7 @@ def test_json_subparser():
         "c2": "v2a"
     }"""
     )
-    mc_parser.add_subparser(mc.JsonSubparser, fileobj=fileobj)
+    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
     values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
         {"c1": "v1", "c2": "v2a", "c3": None, "c4": "v4"}
@@ -172,7 +172,7 @@ def test_json_subparser():
     assert values == expected_values
 
 
-def test_json_subparser_with_missing_required_config():
+def test_json_source_with_missing_required_config():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1")
     mc_parser.add_config("c2", default="v2")
@@ -184,12 +184,12 @@ def test_json_subparser_with_missing_required_config():
         "c2": "v2a"
     }"""
     )
-    mc_parser.add_subparser(mc.JsonSubparser, fileobj=fileobj)
+    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
     with pytest.raises(mc.RequiredConfigNotFoundError):
         mc_parser.parse_config()
 
 
-def test_json_subparser_with_suppress():
+def test_json_source_with_suppress():
     mc_parser = mc.ConfigParser(config_default=mc.SUPPRESS)
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2", default="v2")
@@ -201,7 +201,7 @@ def test_json_subparser_with_suppress():
         "c2": "v2a"
     }"""
     )
-    mc_parser.add_subparser(mc.JsonSubparser, fileobj=fileobj)
+    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
     values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
         {"c1": "v1", "c2": "v2a", "c4": "v4"}
@@ -209,7 +209,7 @@ def test_json_subparser_with_suppress():
     assert values == expected_values
 
 
-def test_json_subparser_with_config_added_after_subparser():
+def test_json_source_with_config_added_after_source():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2", default="v2")
@@ -219,7 +219,7 @@ def test_json_subparser_with_config_added_after_subparser():
         "c3": "v3"
     }"""
     )
-    mc_parser.add_subparser(mc.JsonSubparser, fileobj=fileobj)
+    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
     mc_parser.add_config("c3")
     mc_parser.add_config("c4", default="v4")
     values = mc_parser.parse_config()
@@ -230,11 +230,11 @@ def test_json_subparser_with_config_added_after_subparser():
 
 
 # ------------------------------------------------------------------------------
-# Multiple subparser tests
+# Multiple source tests
 # ------------------------------------------------------------------------------
 
 
-def test_multiple_subparsers():
+def test_multiple_sources():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2", default="v2")
@@ -250,8 +250,8 @@ def test_multiple_subparsers():
         "c2": "v2a"
     }"""
     )
-    mc_parser.add_subparser(mc.JsonSubparser, fileobj=fileobj)
-    mc_parser.add_subparser(mc.SimpleArgparseSubparser)
+    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
+    mc_parser.add_source(mc.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog --c5 v5 --c6 v6a".split()):
         values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
