@@ -12,15 +12,21 @@ import re
 # ------------------------------------------------------------------------------
 # Exceptions
 # ------------------------------------------------------------------------------
+
+
 class RequiredConfigNotFoundError(RuntimeError):
+    pass
+
 
 # ------------------------------------------------------------------------------
 # Tags
 # ------------------------------------------------------------------------------
 
+
 class _SuppressAttributeCreation:
     def __str__(self):
         return "==SUPPRESS=="
+
 
 SUPPRESS = _SuppressAttributeCreation()
 
@@ -29,11 +35,13 @@ class _None:
     def __str__(self):
         return "==NONE=="
 
+
 NONE = _None()
 
 # ------------------------------------------------------------------------------
 # Classes
 # ------------------------------------------------------------------------------
+
 
 class Namespace:
     def __str__(self):
@@ -43,6 +51,7 @@ class Namespace:
         return other.__class__ == self.__class__ and vars(other) == vars(self)
 
     __repr__ = __str__
+
 
 class ArgparseSubparser:
     def __init__(self, config_specs):
@@ -63,11 +72,8 @@ class ArgparseSubparser:
             )
 
     def notify_parsed_args(self, argparse_namespace):
-        self._parsed_values = namespace(
-            argparse_namespace,
-            self._config_specs
-        )
-        
+        self._parsed_values = namespace(argparse_namespace, self._config_specs)
+
     def parse_config(self):
         return self._parsed_values
 
@@ -85,6 +91,7 @@ class SimpleArgparseSubparser(ArgparseSubparser):
     def parse_config(self):
         super().notify_parsed_args(self._argparse_parser.parse_args())
         return super().parse_config()
+
 
 class JsonSubparser:
     def __init__(self, config_specs, path=None, fileobj=None):
@@ -116,9 +123,16 @@ class JsonSubparser:
 
 class ConfigSpec:
     def __init__(
-        self, name, action='store', nargs=None, const=None,
-        default=NONE, type=str, required=False, help=None,
-        parser_specific_options=None
+        self,
+        name,
+        action="store",
+        nargs=None,
+        const=None,
+        default=NONE,
+        type=str,
+        required=False,
+        help=None,
+        parser_specific_options=None,
     ):
         self._name = name
         self._validate_name(name)
@@ -138,18 +152,18 @@ class ConfigSpec:
         self._help = help
         self._parser_specific_options = parser_specific_options or {}
 
-    name = property(operator.attrgetter('_name'))
-    action = property(operator.attrgetter('_action'))
-    nargs = property(operator.attrgetter('_nargs'))
-    const = property(operator.attrgetter('_const'))
-    default = property(operator.attrgetter('_default'))
-    type = property(operator.attrgetter('_type'))
-    required = property(operator.attrgetter('_required'))
-    help = property(operator.attrgetter('_help'))
+    name = property(operator.attrgetter("_name"))
+    action = property(operator.attrgetter("_action"))
+    nargs = property(operator.attrgetter("_nargs"))
+    const = property(operator.attrgetter("_const"))
+    default = property(operator.attrgetter("_default"))
+    type = property(operator.attrgetter("_type"))
+    required = property(operator.attrgetter("_required"))
+    help = property(operator.attrgetter("_help"))
 
     @staticmethod
     def _validate_name(name):
-        if re.match(r'[^0-9A-Za-z_]', name) or re.match(r'^[^a-zA-Z_]', name):
+        if re.match(r"[^0-9A-Za-z_]", name) or re.match(r"^[^a-zA-Z_]", name):
             raise ValueError(
                 f"Invalid config name '{name}', must be a valid Python identifier"
             )
@@ -157,13 +171,16 @@ class ConfigSpec:
     @staticmethod
     def _validate_action(action):
         if action in (
-            'store_const', 'store_true', 'store_false', 'append',
-            'append_const', 'count', 'extend',
+            "store_const",
+            "store_true",
+            "store_false",
+            "append",
+            "append_const",
+            "count",
+            "extend",
         ):
-            raise NotImplementedError(
-                f"action '{action}' has not been implemented"
-            )
-        if action != 'store':
+            raise NotImplementedError(f"action '{action}' has not been implemented")
+        if action != "store":
             raise ValueError(f"unknown action '{action}'")
 
     @staticmethod
@@ -239,17 +256,21 @@ class ConfigParser:
                         f"Did not find value for config item '{spec.name}'"
                     )
 
+
 # ------------------------------------------------------------------------------
 # Free functions
 # ------------------------------------------------------------------------------
+
 
 def getattr_or_none(obj, attr):
     if hasattr(obj, attr):
         return getattr(obj, attr)
     return NONE
 
+
 def has_nonnone_attr(obj, attr):
     return getattr_or_none(obj, attr) is not NONE
+
 
 def namespace(obj, config_specs):
     ns = Namespace()

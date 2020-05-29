@@ -6,6 +6,5 @@
 import setuptools
 
 setuptools.setup(
-    name = "multiconfig",
-    packages = setuptools.find_packages(),
+    name="multiconfig", packages=setuptools.find_packages(),
 )
