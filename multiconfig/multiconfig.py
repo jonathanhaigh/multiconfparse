@@ -9,6 +9,10 @@ import json
 import operator
 import re
 
+# Make argparse.FileType available in this module
+FileType = argparse.FileType
+
+
 # ------------------------------------------------------------------------------
 # Exceptions
 # ------------------------------------------------------------------------------

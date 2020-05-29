@@ -11,7 +11,12 @@ import json
 import pathlib
 import pytest
 import sys
+import tempfile
 import unittest.mock as utm
+
+TEST_FILE_PATH = pathlib.Path(__file__).resolve().parent / "testfile.txt"
+with TEST_FILE_PATH.open() as f:
+    TEST_FILE_CONTENT = f.read()
 
 # ------------------------------------------------------------------------------
 # Helper functions
@@ -138,6 +143,21 @@ def test_types():
     assert isinstance(values.c3, pathlib.Path)
     assert isinstance(values.c4, dict)
     assert isinstance(values.c5, list)
+
+
+def test_file_opening():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", type=mc.FileType("r"))
+    mc_parser.add_config("c2", type=mc.FileType("w"))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mc_parser.add_preparsed_values(
+            namespace_from_dict(
+                {"c1": str(TEST_FILE_PATH), "c2": f"{tmpdir}/testfile2.txt"}
+            )
+        )
+        values = mc_parser.parse_config()
+        assert values.c1.read() == TEST_FILE_CONTENT
+        values.c2.write(TEST_FILE_CONTENT)
 
 
 # ------------------------------------------------------------------------------
