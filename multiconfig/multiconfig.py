@@ -18,11 +18,29 @@ FileType = argparse.FileType
 # ------------------------------------------------------------------------------
 
 
-class RequiredConfigNotFoundError(RuntimeError):
+class ParseError(RuntimeError):
+    """
+    Base class for exceptions indicating a configuration error.
+    """
+
+
+class RequiredConfigNotFoundError(ParseError):
     """
     Exception raised when a required config value could not be found from any
     source.
     """
+
+
+class InvalidChoiceError(ParseError):
+    """
+    Exception raised when a config value is not from a specified set of values.
+    """
+
+    def __init__(self, spec, value):
+        super().__init__(
+            f"invalid choice '{value}' for config item '{spec.name}'; "
+            f"valid choices are {spec.choices}"
+        )
 
 
 # ------------------------------------------------------------------------------
@@ -180,6 +198,7 @@ class ConfigSpec:
         const=None,
         default=NONE,
         type=str,
+        choices=None,
         required=False,
         help=None,
         source_specific_options=None,
@@ -197,7 +216,11 @@ class ConfigSpec:
         self._validate_const(const)
 
         self._default = default
+
         self._type = type
+        self._validate_type(type)
+
+        self._choices = choices
         self._required = required
         self._help = help
         self._source_specific_options = source_specific_options or {}
@@ -208,6 +231,7 @@ class ConfigSpec:
     const = property(operator.attrgetter("_const"))
     default = property(operator.attrgetter("_default"))
     type = property(operator.attrgetter("_type"))
+    choices = property(operator.attrgetter("_choices"))
     required = property(operator.attrgetter("_required"))
     help = property(operator.attrgetter("_help"))
 
@@ -240,15 +264,20 @@ class ConfigSpec:
     def _validate_nargs(nargs):
         if nargs is not None:
             raise NotImplementedError(
-                "nargs argument has not been implemented"
+                "'nargs' argument has not been implemented"
             )
 
     @staticmethod
     def _validate_const(const):
         if const is not None:
             raise NotImplementedError(
-                "const argument has not been implemented"
+                "'const' argument has not been implemented"
             )
+
+    @staticmethod
+    def _validate_type(type):
+        if not callable(type):
+            raise TypeError("'type' argument must be callable")
 
     def source_specific_options(self, source_class):
         opts = {}
@@ -283,6 +312,8 @@ class ConfigParser:
             value = getattr_or_none(preparsed_values, spec.name)
             if value is not NONE:
                 value = spec.type(value)
+                if spec.choices and value not in spec.choices:
+                    raise InvalidChoiceError(spec, value)
                 setattr(self._parsed_values, spec.name, value)
 
     def partially_parse_config(self):

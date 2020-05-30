@@ -160,6 +160,52 @@ def test_file_opening():
         values.c2.write(TEST_FILE_CONTENT)
 
 
+def test_validate_name():
+    mc_parser = mc.ConfigParser()
+    with pytest.raises(ValueError):
+        mc_parser.add_config("--c1")
+
+
+def test_validate_type():
+    mc_parser = mc.ConfigParser()
+    with pytest.raises(TypeError):
+        mc_parser.add_config("c1", type=1)
+
+
+def test_valid_str_choice():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", choices=["a", "b"])
+    mc_parser.add_preparsed_values(namespace_from_dict({"c1": "a"}))
+    expected_values = namespace_from_dict({"c1": "a"})
+    values = mc_parser.parse_config()
+    assert values == expected_values
+
+
+def test_valid_int_choice():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", type=int, choices=[1, 2])
+    mc_parser.add_preparsed_values(namespace_from_dict({"c1": "2"}))
+    expected_values = namespace_from_dict({"c1": 2})
+    values = mc_parser.parse_config()
+    assert values == expected_values
+
+
+def test_invalid_str_choice():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", choices=["a", "b"])
+    with pytest.raises(mc.InvalidChoiceError):
+        mc_parser.add_preparsed_values(namespace_from_dict({"c1": "c"}))
+        mc_parser.parse_config()
+
+
+def test_invalid_int_choice():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", type=int, choices=[1, 2])
+    with pytest.raises(mc.InvalidChoiceError):
+        mc_parser.add_preparsed_values(namespace_from_dict({"c1": "3"}))
+        mc_parser.parse_config()
+
+
 # ------------------------------------------------------------------------------
 # SimpleArgparseSource tests
 # ------------------------------------------------------------------------------
@@ -326,17 +372,17 @@ def test_json_source_with_config_added_after_source():
 
 def test_multiple_sources():
     mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", type=int, required=True)
+    mc_parser.add_config("c1", type=int, choices=[1, 2], required=True)
     mc_parser.add_config("c2", type=str, default="v2")
     mc_parser.add_config("c3", type=pathlib.Path)
     mc_parser.add_config("c4", type=split_str, default="word1 word2".split())
-    mc_parser.add_config("c5", required=True)
+    mc_parser.add_config("c5", choices=["v5", "v5a"], required=True)
     mc_parser.add_config("c6", default="v6")
     mc_parser.add_config("c7", type=json.loads)
     mc_parser.add_config("c8", default="v8")
     fileobj = io.StringIO(
         """{
-        "c1": 10,
+        "c1": 1,
         "c2": "v2a"
     }"""
     )
@@ -346,7 +392,7 @@ def test_multiple_sources():
         values = mc_parser.parse_config()
     expected_values = namespace_from_dict(
         {
-            "c1": 10,
+            "c1": 1,
             "c2": "v2a",
             "c3": None,
             "c4": "word1 word2".split(),
