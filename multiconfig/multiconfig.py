@@ -6,7 +6,6 @@
 import argparse
 import copy
 import json
-import operator
 import re
 
 # Make argparse.FileType available in this module
@@ -203,37 +202,27 @@ class ConfigSpec:
         help=None,
         source_specific_options=None,
     ):
-        self._name = name
+        self.name = name
         self._validate_name(name)
 
-        self._action = action
+        self.action = action
         self._validate_action(action)
 
-        self._nargs = nargs
+        self.nargs = nargs
         self._validate_nargs(nargs)
 
-        self._const = const
+        self.const = const
         self._validate_const(const)
 
-        self._default = default
+        self.default = default
 
-        self._type = type
+        self.type = type
         self._validate_type(type)
 
-        self._choices = choices
-        self._required = required
-        self._help = help
+        self.choices = choices
+        self.required = required
+        self.help = help
         self._source_specific_options = source_specific_options or {}
-
-    name = property(operator.attrgetter("_name"))
-    action = property(operator.attrgetter("_action"))
-    nargs = property(operator.attrgetter("_nargs"))
-    const = property(operator.attrgetter("_const"))
-    default = property(operator.attrgetter("_default"))
-    type = property(operator.attrgetter("_type"))
-    choices = property(operator.attrgetter("_choices"))
-    required = property(operator.attrgetter("_required"))
-    help = property(operator.attrgetter("_help"))
 
     @staticmethod
     def _validate_name(name):
