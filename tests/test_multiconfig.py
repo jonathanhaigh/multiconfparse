@@ -197,6 +197,83 @@ def test_invalid_int_choice():
         mc_parser.parse_config()
 
 
+def test_store_const():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_const", const="v1")
+    mc_parser.add_source(mc.DictSource, {"c1": True})
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": "v1"})
+    assert values == expected_values
+
+
+def test_store_const_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_const", const="v1")
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": None})
+    assert values == expected_values
+
+
+def test_store_const_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config(
+        "c1", action="store_const", const="v1a", default="v1b"
+    )
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": "v1b"})
+    assert values == expected_values
+
+
+def test_store_true():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_true")
+    mc_parser.add_source(mc.DictSource, {"c1": "v1"})
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": True})
+    assert values == expected_values
+
+
+def test_store_true_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_true")
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": False})
+    assert values == expected_values
+
+
+def test_store_true_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_true", default="v1")
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": "v1"})
+    assert values == expected_values
+
+
+def test_store_false():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_false")
+    mc_parser.add_source(mc.DictSource, {"c1": "v1"})
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": False})
+    assert values == expected_values
+
+
+def test_store_false_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_false")
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": True})
+    assert values == expected_values
+
+
+def test_store_false_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_false", default="v1")
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": "v1"})
+    assert values == expected_values
+
+
 # ------------------------------------------------------------------------------
 # SimpleArgparseSource tests
 # ------------------------------------------------------------------------------
@@ -272,6 +349,92 @@ def test_simple_argparse_source_with_prog():
     with utm.patch.object(sys, "argv", "prog --c1 v1".split()):
         with pytest.raises(ArgparseError, match="PROG_TEST"):
             mc_parser.parse_config()
+
+
+def test_simple_argparse_source_with_store_const():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_const", const="v1")
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", "prog --c1".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": "v1"})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_store_const_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_const", const="v1")
+    with utm.patch.object(sys, "argv", "prog".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": None})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_store_const_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config(
+        "c1", action="store_const", const="v1a", default="v1b"
+    )
+    with utm.patch.object(sys, "argv", "prog".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": "v1b"})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_store_true():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_true")
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", "prog --c1".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": True})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_store_true_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_true")
+    with utm.patch.object(sys, "argv", "prog".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": False})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_store_true_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_true", default="v1")
+    with utm.patch.object(sys, "argv", "prog".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": "v1"})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_store_false():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_false")
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", "prog --c1".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": False})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_store_false_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_false")
+    with utm.patch.object(sys, "argv", "prog".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": True})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_store_false_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="store_false", default="v1")
+    with utm.patch.object(sys, "argv", "prog".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": "v1"})
+    assert values == expected_values
 
 
 # ------------------------------------------------------------------------------

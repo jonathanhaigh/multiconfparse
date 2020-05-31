@@ -128,12 +128,24 @@ class ArgparseSource(Source):
         subclass) to obtain config values from the command line.
         """
         for spec in self._config_specs:
-            argparse_parser.add_argument(
-                self._config_name_to_arg_name(spec.name),
-                default=NONE,
-                type=str,
-                help=spec.help,
-            )
+            if spec.action == "store":
+                argparse_parser.add_argument(
+                    self._config_name_to_arg_name(spec.name),
+                    default=NONE,
+                    type=str,
+                    help=spec.help,
+                )
+            elif spec.action in ("store_const", "store_true", "store_false"):
+                argparse_parser.add_argument(
+                    self._config_name_to_arg_name(spec.name),
+                    action="store_true",
+                    default=NONE,
+                    help=spec.help,
+                )
+            else:
+                # Ignore actions that this source can't handle - maybe another
+                # source can instead.
+                pass
 
     def notify_parsed_args(self, argparse_namespace):
         """
@@ -268,15 +280,7 @@ class _ConfigSpec(abc.ABC):
         Factory to obtain _ConfigSpec objects with the correct subclass to
         handle the given action.
         """
-        if action in (
-            "store_const",
-            "store_true",
-            "store_false",
-            "append",
-            "append_const",
-            "count",
-            "extend",
-        ):
+        if action in ("append", "append_const", "count", "extend",):
             raise NotImplementedError(
                 f"action '{action}' has not been implemented"
             )
@@ -388,9 +392,54 @@ class _StoreConfigSpec(_ConfigSpec):
         if const is not NONE:
             raise NotImplementedError(
                 "'const' argument has not been implemented for "
-                "'{self.action}' action"
+                f"'{self.action}' action"
             )
         self.const = const
+
+
+class _StoreConstConfigSpec(_ConfigSpec):
+    action = "store_const"
+
+    def __init__(
+        self, const, default=NONE, **kwargs,
+    ):
+        """
+        Do not call this directly - use _ConfigItem.create() instead.
+        """
+        super().__init__(**kwargs)
+        self.const = const
+        self.default = default
+        self.required = False
+
+    def accumulate_value(self, current, raw_new):
+        if raw_new is NONE:
+            return current
+        return self.const
+
+    def apply_default(self, value):
+        if value is NONE and self.default is not NONE:
+            return self.default
+        return value
+
+
+class _StoreTrueConfigSpec(_StoreConstConfigSpec):
+    action = "store_true"
+
+    def __init__(self, default=False, **kwargs):
+        """
+        Do not call this directly - use _ConfigItem.create() instead.
+        """
+        super().__init__(const=True, default=default, **kwargs)
+
+
+class _StoreFalseConfigSpec(_StoreConstConfigSpec):
+    action = "store_false"
+
+    def __init__(self, default=True, **kwargs):
+        """
+        Do not call this directly - use _ConfigItem.create() instead.
+        """
+        super().__init__(const=False, default=default, **kwargs)
 
 
 class ConfigParser:
