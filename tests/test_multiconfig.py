@@ -343,6 +343,56 @@ def test_append_missing_with_default():
     assert values == expected_values
 
 
+def test_count():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count")
+    mc_parser.add_source(mc.DictSource, {"c1": True})
+    mc_parser.add_source(mc.DictSource, {"c1": False})
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": 2})
+    assert values == expected_values
+
+
+def test_count_with_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count", default=10)
+    mc_parser.add_source(mc.DictSource, {"c1": True})
+    mc_parser.add_source(mc.DictSource, {"c1": False})
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": 12})
+    assert values == expected_values
+
+
+def test_count_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count")
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": None})
+    assert values == expected_values
+
+
+def test_count_required_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count", required=True)
+    with pytest.raises(mc.RequiredConfigNotFoundError):
+        mc_parser.parse_config()
+
+
+def test_count_required_missing_with_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count", required=True, default=10)
+    with pytest.raises(mc.RequiredConfigNotFoundError):
+        mc_parser.parse_config()
+
+
+def test_count_missing_with_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count", default=10)
+    values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": 10})
+    assert values == expected_values
+
+
 # ------------------------------------------------------------------------------
 # SimpleArgparseSource tests
 # ------------------------------------------------------------------------------
@@ -564,6 +614,64 @@ def test_simple_argparse_source_with_append_missing_with_default():
     assert values == expected_values
 
 
+def test_simple_argparse_source_with_count():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count")
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", "prog --c1 --c1".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": 2})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_count_with_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count", default=10)
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", "prog --c1 --c1".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": 12})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_count_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count")
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", "prog".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": None})
+    assert values == expected_values
+
+
+def test_simple_argparse_source_with_count_required_missing():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count", required=True)
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", "prog".split()):
+        with pytest.raises(mc.RequiredConfigNotFoundError):
+            mc_parser.parse_config()
+
+
+def test_simple_argparse_source_with_count_required_missing_with_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count", required=True, default=10)
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", "prog".split()):
+        with pytest.raises(mc.RequiredConfigNotFoundError):
+            mc_parser.parse_config()
+
+
+def test_simple_argparse_source_with_count_missing_with_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c1", action="count", default=10)
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", "prog".split()):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict({"c1": 10})
+    assert values == expected_values
+
+
 # ------------------------------------------------------------------------------
 # JsonSource tests
 # ------------------------------------------------------------------------------
@@ -662,18 +770,20 @@ def test_multiple_sources():
     mc_parser.add_config("c7", type=json.loads)
     mc_parser.add_config("c8", default="v8")
     mc_parser.add_config("c9", action="append", type=int, default=[0, 1])
+    mc_parser.add_config("c10", action="count", default=10)
     fileobj = io.StringIO(
         """{
         "c1": 1,
         "c2": "v2a",
-        "c9": 2
+        "c9": 2,
+        "c10": true
     }"""
     )
     mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
-    mc_parser.add_source(mc.DictSource, {"c9": 3})
+    mc_parser.add_source(mc.DictSource, {"c9": 3, "c10": 99})
     mc_parser.add_source(mc.SimpleArgparseSource)
     with utm.patch.object(
-        sys, "argv", "prog --c5 v5 --c7 [1,2] --c9 4".split()
+        sys, "argv", "prog --c5 v5 --c7 [1,2] --c9 4 --c10 --c10".split()
     ):
         values = mc_parser.parse_config()
     expected_values = mc._namespace_from_dict(
@@ -687,6 +797,7 @@ def test_multiple_sources():
             "c7": [1, 2],
             "c8": "v8",
             "c9": [0, 1, 2, 3, 4],
+            "c10": 14,
         }
     )
     assert values == expected_values

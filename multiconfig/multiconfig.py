@@ -126,6 +126,8 @@ class DictSource(Source):
                     setattr(ns, spec.name, True)
                 elif spec.action == "append":
                     setattr(ns, spec.name, [self._dict[spec.name]])
+                elif spec.action == "count":
+                    setattr(ns, spec.name, 1)
         return ns
 
 
@@ -165,6 +167,10 @@ class ArgparseSource(Source):
                 argparse_parser.add_argument(
                     arg_name, action="append", type=str, help=spec.help
                 )
+            elif spec.action == "count":
+                argparse_parser.add_argument(
+                    arg_name, action="count", help=spec.help
+                )
             else:
                 # Ignore actions that this source can't handle - maybe another
                 # source can instead.
@@ -182,6 +188,8 @@ class ArgparseSource(Source):
                 continue
             value = getattr(argparse_namespace, spec.name)
             if spec.action == "append" and value is None:
+                continue
+            if spec.action == "count" and value is None:
                 continue
             setattr(ns, spec.name, value)
         self._parsed_values = ns
@@ -308,7 +316,7 @@ class _ConfigSpec(abc.ABC):
         Factory to obtain _ConfigSpec objects with the correct subclass to
         handle the given action.
         """
-        if action in ("append_const", "count", "extend",):
+        if action in ("append_const", "extend",):
             raise NotImplementedError(
                 f"action '{action}' has not been implemented"
             )
@@ -530,6 +538,35 @@ class _AppendConfigSpec(_ConfigSpec):
                 f"'{self.action}' action"
             )
         self.const = const
+
+
+class _CountConfigSpec(_ConfigSpec):
+    action = "count"
+
+    def __init__(
+        self, default=NONE, required=False, **kwargs,
+    ):
+        """
+        Do not call this directly - use _ConfigItem.create() instead.
+        """
+        super().__init__(**kwargs)
+        self.default = default
+        self.required = required
+
+    def accumulate_value(self, current, raw_new):
+        if raw_new is NONE:
+            return current
+        if current is NONE:
+            return raw_new
+        else:
+            return current + raw_new
+
+    def apply_default(self, value):
+        if self.default is NONE:
+            return value
+        if value is NONE:
+            return self.default
+        return self.default + value
 
 
 class ConfigParser:
