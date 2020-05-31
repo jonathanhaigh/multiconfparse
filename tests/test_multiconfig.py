@@ -434,9 +434,9 @@ def test_has_nonnone_attr():
 
 def test_namespace():
     config_specs = [
-        mc.ConfigSpec("c1"),
-        mc.ConfigSpec("c2"),
-        mc.ConfigSpec("c4"),
+        mc._ConfigSpec.create(name="c1"),
+        mc._ConfigSpec.create(name="c2"),
+        mc._ConfigSpec.create(name="c4"),
     ]
     ns = mc.Namespace()
     setattr(ns, "c1", "v1")

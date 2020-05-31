@@ -3,6 +3,7 @@
 # Copyright 2020 Jonathan Haigh <jonathanhaigh@gmail.com>
 # SPDX-License-Identifier: MIT
 
+import abc
 import argparse
 import copy
 import json
@@ -36,9 +37,10 @@ class InvalidChoiceError(ParseError):
     """
 
     def __init__(self, spec, value):
+        choice_str = ",".join((str(c) for c in spec.choices))
         super().__init__(
             f"invalid choice '{value}' for config item '{spec.name}'; "
-            f"valid choices are {spec.choices}"
+            f"valid choices are ({choice_str})"
         )
 
 
@@ -86,13 +88,9 @@ class ArgparseSource:
         for spec in self._config_specs:
             argparse_parser.add_argument(
                 self._config_name_to_arg_name(spec.name),
-                action=spec.action,
-                nargs=spec.nargs,
-                const=spec.const,
                 default=NONE,
                 type=str,
                 help=spec.help,
-                **spec.source_specific_options(self.__class__),
             )
 
     def notify_parsed_args(self, argparse_namespace):
@@ -188,52 +186,27 @@ class JsonSource:
             return json.load(self._fileobj)
 
 
-class ConfigSpec:
-    def __init__(
-        self,
-        name,
-        action="store",
-        nargs=None,
-        const=None,
-        default=NONE,
-        type=str,
-        choices=None,
-        required=False,
-        help=None,
-        source_specific_options=None,
-    ):
-        self.name = name
-        self._validate_name(name)
+class _ConfigSpec(abc.ABC):
+    # Dict of subclasses that handle specific actions. The name of the action
+    # is the dict item's key and the subclass is the dict item's value.
+    _subclasses = {}
 
-        self.action = action
-        self._validate_action(action)
+    def __init_subclass__(cls, **kwargs):
+        """
+        Automatically register subclasses specialized to handle a particular
+        action. For a subclass to be registered it must have the name of the
+        action it handles in an 'action' class attribute.
+        """
+        super().__init_subclass__(**kwargs)
+        if hasattr(cls, "action"):
+            cls._subclasses[cls.action] = cls
 
-        self.nargs = nargs
-        self._validate_nargs(nargs)
-
-        self.const = const
-        self._validate_const(const)
-
-        self.default = default
-
-        self.type = type
-        self._validate_type(type)
-
-        self.choices = choices
-        self.required = required
-        self.help = help
-        self._source_specific_options = source_specific_options or {}
-
-    @staticmethod
-    def _validate_name(name):
-        if re.match(r"[^0-9A-Za-z_]", name) or re.match(r"^[^a-zA-Z_]", name):
-            raise ValueError(
-                f"Invalid config name '{name}', "
-                "must be a valid Python identifier"
-            )
-
-    @staticmethod
-    def _validate_action(action):
+    @classmethod
+    def create(cls, action="store", **kwargs):
+        """
+        Factory to obtain _ConfigSpec objects with the correct subclass to
+        handle the given action.
+        """
         if action in (
             "store_const",
             "store_true",
@@ -246,34 +219,85 @@ class ConfigSpec:
             raise NotImplementedError(
                 f"action '{action}' has not been implemented"
             )
-        if action != "store":
+        if action not in cls._subclasses:
             raise ValueError(f"unknown action '{action}'")
+        return cls._subclasses[action](**kwargs)
 
-    @staticmethod
-    def _validate_nargs(nargs):
-        if nargs is not None:
-            raise NotImplementedError(
-                "'nargs' argument has not been implemented"
+    def __init__(self, name, help=None):
+        self._set_name(name)
+        self.help = help
+
+    @abc.abstractmethod
+    def accumulate_value(self, current, new):
+        ...
+
+    @abc.abstractmethod
+    def apply_default(self, value):
+        ...
+
+    def _set_name(self, name):
+        if re.match(r"[^0-9A-Za-z_]", name) or re.match(r"^[^a-zA-Z_]", name):
+            raise ValueError(
+                f"Invalid config name '{name}', "
+                "must be a valid Python identifier"
             )
+        self.name = name
 
-    @staticmethod
-    def _validate_const(const):
-        if const is not None:
-            raise NotImplementedError(
-                "'const' argument has not been implemented"
-            )
-
-    @staticmethod
-    def _validate_type(type):
+    def _set_type(self, type):
         if not callable(type):
             raise TypeError("'type' argument must be callable")
+        self.type = type
 
-    def source_specific_options(self, source_class):
-        opts = {}
-        for candidate in self._source_specific_options:
-            if issubclass(candidate, source_class):
-                opts.update(self._source_specific_options[candidate])
-        return opts
+
+class _StoreConfigSpec(_ConfigSpec):
+    action = "store"
+
+    def __init__(
+        self,
+        nargs=NONE,
+        const=NONE,
+        default=NONE,
+        type=str,
+        choices=NONE,
+        required=False,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self._set_nargs(nargs)
+        self._set_const(const)
+        self.default = default
+        super()._set_type(type)
+        self.choices = choices
+        self.required = required
+
+    def accumulate_value(self, current, raw_new):
+        if raw_new is NONE:
+            return current
+        new = self.type(raw_new)
+        if self.choices is not NONE and new not in self.choices:
+            raise InvalidChoiceError(self, new)
+        return new
+
+    def apply_default(self, value):
+        if value is NONE and self.default is not NONE:
+            return self.default
+        return value
+
+    def _set_nargs(self, nargs):
+        if nargs is not NONE:
+            raise NotImplementedError(
+                "'nargs' argument has not been implemented for "
+                "'{self.action}' action"
+            )
+        self.nargs = nargs
+
+    def _set_const(self, const):
+        if const is not NONE:
+            raise NotImplementedError(
+                "'const' argument has not been implemented for "
+                "'{self.action}' action"
+            )
+        self.const = const
 
 
 class ConfigParser:
@@ -281,13 +305,10 @@ class ConfigParser:
         self._config_specs = []
         self._sources = []
         self._parsed_values = Namespace()
-        self._config_default = config_default
+        self._global_default = config_default
 
     def add_config(self, name, **kwargs):
-        extra_kwargs = {}
-        if "default" not in kwargs:
-            extra_kwargs["default"] = self._config_default
-        spec = ConfigSpec(name, **kwargs, **extra_kwargs)
+        spec = _ConfigSpec.create(name=name, **kwargs)
         self._config_specs.append(spec)
         return spec
 
@@ -298,12 +319,11 @@ class ConfigParser:
 
     def add_preparsed_values(self, preparsed_values):
         for spec in self._config_specs:
-            value = getattr_or_none(preparsed_values, spec.name)
-            if value is not NONE:
-                value = spec.type(value)
-                if spec.choices and value not in spec.choices:
-                    raise InvalidChoiceError(spec, value)
-                setattr(self._parsed_values, spec.name, value)
+            current = getattr_or_none(self._parsed_values, spec.name)
+            raw_new = getattr_or_none(preparsed_values, spec.name)
+            new = spec.accumulate_value(current, raw_new)
+            if new is not NONE:
+                setattr(self._parsed_values, spec.name, new)
 
     def partially_parse_config(self):
         for source in self._sources:
@@ -319,11 +339,15 @@ class ConfigParser:
     def _get_configs_with_defaults(self):
         values = copy.copy(self._parsed_values)
         for spec in self._config_specs:
-            if not has_nonnone_attr(values, spec.name):
-                if spec.default is NONE:
-                    setattr(values, spec.name, None)
-                elif spec.default is not SUPPRESS:
-                    setattr(values, spec.name, spec.default)
+            value = getattr_or_none(values, spec.name)
+            if value is NONE:
+                value = spec.apply_default(value)
+            if value is not NONE:
+                setattr(values, spec.name, value)
+            elif self._global_default is NONE:
+                setattr(values, spec.name, None)
+            elif self._global_default is not SUPPRESS:
+                setattr(values, spec.name, self._global_default)
         return values
 
     def _check_required_configs(self):
