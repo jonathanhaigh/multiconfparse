@@ -100,12 +100,33 @@ class Source(abc.ABC):
 
 
 class DictSource(Source):
+    """
+    Obtains config values from a dict.
+
+    Do not create objects of this class directly - create them via
+    ConfigParser.add_source() instead:
+    config_parser.add_source(multiconfig.DictSource, {"some": "dict"})
+    """
+
     def __init__(self, config_specs, d):
         self._config_specs = config_specs
         self._dict = d
 
     def parse_config(self):
-        return _namespace_from_dict(self._dict, self._config_specs)
+        ns = Namespace()
+        for spec in self._config_specs:
+            if spec.name in self._dict:
+                if spec.action == "store":
+                    setattr(ns, spec.name, self._dict[spec.name])
+                elif spec.action in (
+                    "store_const",
+                    "store_true",
+                    "store_false",
+                ):
+                    setattr(ns, spec.name, True)
+                elif spec.action == "append":
+                    setattr(ns, spec.name, [self._dict[spec.name]])
+        return ns
 
 
 class ArgparseSource(Source):
@@ -128,19 +149,21 @@ class ArgparseSource(Source):
         subclass) to obtain config values from the command line.
         """
         for spec in self._config_specs:
+            arg_name = self._config_name_to_arg_name(spec.name)
             if spec.action == "store":
                 argparse_parser.add_argument(
-                    self._config_name_to_arg_name(spec.name),
-                    default=NONE,
-                    type=str,
-                    help=spec.help,
+                    arg_name, default=NONE, type=str, help=spec.help,
                 )
             elif spec.action in ("store_const", "store_true", "store_false"):
                 argparse_parser.add_argument(
-                    self._config_name_to_arg_name(spec.name),
+                    arg_name,
                     action="store_true",
                     default=NONE,
                     help=spec.help,
+                )
+            elif spec.action == "append":
+                argparse_parser.add_argument(
+                    arg_name, action="append", type=str, help=spec.help
                 )
             else:
                 # Ignore actions that this source can't handle - maybe another
@@ -153,9 +176,15 @@ class ArgparseSource(Source):
         argparse.ArgumentParser.parse_args() to notify this ArgparseSource
         object of the results.
         """
-        self._parsed_values = _namespace(
-            argparse_namespace, self._config_specs
-        )
+        ns = Namespace()
+        for spec in self._config_specs:
+            if not hasattr(argparse_namespace, spec.name):
+                continue
+            value = getattr(argparse_namespace, spec.name)
+            if spec.action == "append" and value is None:
+                continue
+            setattr(ns, spec.name, value)
+        self._parsed_values = ns
 
     @staticmethod
     def _config_name_to_arg_name(config_name):
@@ -231,28 +260,27 @@ class JsonSource(Source):
         """
         Don't call this directly, use ConfigParser.add_source() instead.
         """
-        self._config_specs = config_specs
-        self._path = path
-        self._fileobj = fileobj
-
         if path and fileobj:
             raise ValueError(
                 "JsonSource's 'path' and 'fileobj' options were both "
                 "specified but only one is expected"
             )
+        json = self._get_json(path, fileobj)
+        self._dict_source = DictSource(config_specs, json)
 
     def parse_config(self):
         """
         Don't call this directly, use ConfigParser.parse_config() instead.
         """
-        return _namespace_from_dict(self._get_json(), self._config_specs)
+        return self._dict_source.parse_config()
 
-    def _get_json(self):
-        if self._path:
-            with open(self._path, mode="r") as f:
+    @staticmethod
+    def _get_json(path, fileobj):
+        if path:
+            with open(path, mode="r") as f:
                 return json.load(f)
         else:
-            return json.load(self._fileobj)
+            return json.load(fileobj)
 
 
 class _ConfigSpec(abc.ABC):
@@ -280,7 +308,7 @@ class _ConfigSpec(abc.ABC):
         Factory to obtain _ConfigSpec objects with the correct subclass to
         handle the given action.
         """
-        if action in ("append", "append_const", "count", "extend",):
+        if action in ("append_const", "count", "extend",):
             raise NotImplementedError(
                 f"action '{action}' has not been implemented"
             )
@@ -442,6 +470,68 @@ class _StoreFalseConfigSpec(_StoreConstConfigSpec):
         super().__init__(const=False, default=default, **kwargs)
 
 
+class _AppendConfigSpec(_ConfigSpec):
+    action = "append"
+
+    def __init__(
+        self,
+        nargs=NONE,
+        const=NONE,
+        default=NONE,
+        type=str,
+        choices=NONE,
+        required=False,
+        **kwargs,
+    ):
+        """
+        Do not call this directly - use _ConfigItem.create() instead.
+        """
+        super().__init__(**kwargs)
+        self._set_nargs(nargs)
+        self._set_const(const)
+        self.default = default
+        super()._set_type(type)
+        self.choices = choices
+        self.required = required
+
+    def accumulate_value(self, current, raw_new):
+        if raw_new is NONE:
+            return current
+        if current is NONE:
+            new = []
+        else:
+            new = copy.copy(current)
+        for raw_value in raw_new:
+            value = self.type(raw_value)
+            if self.choices is not NONE and value not in self.choices:
+                raise InvalidChoiceError(self, value)
+            new.append(value)
+        return new
+
+    def apply_default(self, value):
+        if self.default is not NONE:
+            if value is NONE:
+                return self.default
+            return self.default + value
+        return value
+
+    def _set_nargs(self, nargs):
+        if nargs is not NONE:
+            raise NotImplementedError(
+                "'nargs' argument has not been implemented for "
+                "'{self.action}' action"
+            )
+        self.nargs = nargs
+
+    def _set_const(self, const):
+        if const is not NONE:
+            raise NotImplementedError(
+                "'const' argument has not been implemented for "
+                f"'{self.action}' action"
+            )
+        self.const = const
+
+
 class ConfigParser:
     def __init__(self, config_default=None):
         """
@@ -509,9 +599,7 @@ class ConfigParser:
     def _get_configs_with_defaults(self):
         values = copy.copy(self._parsed_values)
         for spec in self._config_specs:
-            value = _getattr_or_none(values, spec.name)
-            if value is NONE:
-                value = spec.apply_default(value)
+            value = spec.apply_default(_getattr_or_none(values, spec.name))
             if value is not NONE:
                 setattr(values, spec.name, value)
             elif self._global_default is NONE:
