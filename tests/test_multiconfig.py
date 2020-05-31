@@ -23,13 +23,6 @@ with TEST_FILE_PATH.open() as f:
 # ------------------------------------------------------------------------------
 
 
-def namespace_from_dict(d):
-    ns = mc.Namespace()
-    for k, v in d.items():
-        setattr(ns, k, v)
-    return ns
-
-
 def split_str(s):
     return s.split()
 
@@ -59,7 +52,7 @@ def test_default_value_without_sources():
     mc_parser.add_config("c1")
     mc_parser.add_config("c2", default="v2")
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c1": None, "c2": "v2"})
+    expected_values = mc._namespace_from_dict({"c1": None, "c2": "v2"})
     assert values == expected_values
 
 
@@ -68,7 +61,7 @@ def test_default_value_from_config_default():
     mc_parser.add_config("c1")
     mc_parser.add_config("c2", default="v2")
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c1": "v1", "c2": "v2"})
+    expected_values = mc._namespace_from_dict({"c1": "v1", "c2": "v2"})
     assert values == expected_values
 
 
@@ -77,7 +70,7 @@ def test_suppress():
     mc_parser.add_config("c1")
     mc_parser.add_config("c2", default="v2")
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c2": "v2"})
+    expected_values = mc._namespace_from_dict({"c2": "v2"})
     assert values == expected_values
 
 
@@ -93,9 +86,9 @@ def test_required_config_found():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2")
-    mc_parser.add_preparsed_values(namespace_from_dict({"c1": "v1"}))
+    mc_parser.add_source(mc.DictSource, {"c1": "v1"})
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict({"c1": "v1", "c2": None})
+    expected_values = mc._namespace_from_dict({"c1": "v1", "c2": None})
     assert values == expected_values
 
 
@@ -103,9 +96,9 @@ def test_partially_parse_config():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", required=True)
     mc_parser.add_config("c2")
-    mc_parser.add_preparsed_values(namespace_from_dict({"c2": "v2"}))
+    mc_parser.add_source(mc.DictSource, {"c2": "v2"})
     values = mc_parser.partially_parse_config()
-    expected_values = namespace_from_dict({"c1": None, "c2": "v2"})
+    expected_values = mc._namespace_from_dict({"c1": None, "c2": "v2"})
     assert values == expected_values
 
 
@@ -116,19 +109,18 @@ def test_types():
     mc_parser.add_config("c3", type=pathlib.Path)
     mc_parser.add_config("c4", type=json.loads)
     mc_parser.add_config("c5", type=split_str)
-    mc_parser.add_preparsed_values(
-        namespace_from_dict(
-            {
-                "c1": "v1",
-                "c2": "10",
-                "c3": "/some/path",
-                "c4": '{ "a": "va", "b": 10, "c": [ 1, 2, 3 ] }',
-                "c5": "word1 word2 word3",
-            }
-        )
+    mc_parser.add_source(
+        mc.DictSource,
+        {
+            "c1": "v1",
+            "c2": "10",
+            "c3": "/some/path",
+            "c4": '{ "a": "va", "b": 10, "c": [ 1, 2, 3 ] }',
+            "c5": "word1 word2 word3",
+        },
     )
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict(
+    expected_values = mc._namespace_from_dict(
         {
             "c1": "v1",
             "c2": 10,
@@ -150,10 +142,9 @@ def test_file_opening():
     mc_parser.add_config("c1", type=mc.FileType("r"))
     mc_parser.add_config("c2", type=mc.FileType("w"))
     with tempfile.TemporaryDirectory() as tmpdir:
-        mc_parser.add_preparsed_values(
-            namespace_from_dict(
-                {"c1": str(TEST_FILE_PATH), "c2": f"{tmpdir}/testfile2.txt"}
-            )
+        mc_parser.add_source(
+            mc.DictSource,
+            {"c1": str(TEST_FILE_PATH), "c2": f"{tmpdir}/testfile2.txt"},
         )
         values = mc_parser.parse_config()
         assert values.c1.read() == TEST_FILE_CONTENT
@@ -175,8 +166,8 @@ def test_validate_type():
 def test_valid_str_choice():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", choices=["a", "b"])
-    mc_parser.add_preparsed_values(namespace_from_dict({"c1": "a"}))
-    expected_values = namespace_from_dict({"c1": "a"})
+    mc_parser.add_source(mc.DictSource, {"c1": "a"})
+    expected_values = mc._namespace_from_dict({"c1": "a"})
     values = mc_parser.parse_config()
     assert values == expected_values
 
@@ -184,8 +175,8 @@ def test_valid_str_choice():
 def test_valid_int_choice():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", type=int, choices=[1, 2])
-    mc_parser.add_preparsed_values(namespace_from_dict({"c1": "2"}))
-    expected_values = namespace_from_dict({"c1": 2})
+    mc_parser.add_source(mc.DictSource, {"c1": "2"})
+    expected_values = mc._namespace_from_dict({"c1": 2})
     values = mc_parser.parse_config()
     assert values == expected_values
 
@@ -194,7 +185,7 @@ def test_invalid_str_choice():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", choices=["a", "b"])
     with pytest.raises(mc.InvalidChoiceError):
-        mc_parser.add_preparsed_values(namespace_from_dict({"c1": "c"}))
+        mc_parser.add_source(mc.DictSource, {"c1": "c"})
         mc_parser.parse_config()
 
 
@@ -202,7 +193,7 @@ def test_invalid_int_choice():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", type=int, choices=[1, 2])
     with pytest.raises(mc.InvalidChoiceError):
-        mc_parser.add_preparsed_values(namespace_from_dict({"c1": "3"}))
+        mc_parser.add_source(mc.DictSource, {"c1": "3"})
         mc_parser.parse_config()
 
 
@@ -220,7 +211,7 @@ def test_simple_argparse_source():
     mc_parser.add_source(mc.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
         values = mc_parser.parse_config()
-    expected_values = namespace_from_dict(
+    expected_values = mc._namespace_from_dict(
         {"c1": "v1", "c2": "v2a", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
@@ -247,7 +238,7 @@ def test_simple_argparse_source_with_suppress():
     mc_parser.add_source(mc.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
         values = mc_parser.parse_config()
-    expected_values = namespace_from_dict(
+    expected_values = mc._namespace_from_dict(
         {"c1": "v1", "c2": "v2a", "c4": "v4"}
     )
     assert values == expected_values
@@ -265,7 +256,7 @@ def test_simple_argparse_source_with_config_added_after_source():
             values = mc_parser.parse_config()
     with utm.patch.object(sys, "argv", "prog --c1 v1".split()):
         values = mc_parser.parse_config()
-    expected_values = namespace_from_dict(
+    expected_values = mc._namespace_from_dict(
         {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
@@ -302,7 +293,7 @@ def test_json_source():
     )
     mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict(
+    expected_values = mc._namespace_from_dict(
         {"c1": "v1", "c2": "v2a", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
@@ -339,7 +330,7 @@ def test_json_source_with_suppress():
     )
     mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict(
+    expected_values = mc._namespace_from_dict(
         {"c1": "v1", "c2": "v2a", "c4": "v4"}
     )
     assert values == expected_values
@@ -359,7 +350,7 @@ def test_json_source_with_config_added_after_source():
     mc_parser.add_config("c3")
     mc_parser.add_config("c4", default="v4")
     values = mc_parser.parse_config()
-    expected_values = namespace_from_dict(
+    expected_values = mc._namespace_from_dict(
         {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
@@ -390,7 +381,7 @@ def test_multiple_sources():
     mc_parser.add_source(mc.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog --c5 v5 --c7 [1,2]".split()):
         values = mc_parser.parse_config()
-    expected_values = namespace_from_dict(
+    expected_values = mc._namespace_from_dict(
         {
             "c1": 1,
             "c2": "v2a",
@@ -430,18 +421,3 @@ def test_has_nonnone_attr():
     assert mc._has_nonnone_attr(obj, "c2")
     assert not mc._has_nonnone_attr(obj, "c3")
     assert not mc._has_nonnone_attr(obj, "c4")
-
-
-def test_namespace():
-    config_specs = [
-        mc._ConfigSpec.create(name="c1"),
-        mc._ConfigSpec.create(name="c2"),
-        mc._ConfigSpec.create(name="c4"),
-    ]
-    ns = mc.Namespace()
-    setattr(ns, "c1", "v1")
-    setattr(ns, "c3", "v3")
-    setattr(ns, "c4", "v4")
-    values = mc._namespace(ns, config_specs)
-    expected_values = namespace_from_dict({"c1": "v1", "c4": "v4"})
-    assert values == expected_values

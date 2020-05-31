@@ -79,7 +79,36 @@ class Namespace:
     __repr__ = __str__
 
 
-class ArgparseSource:
+class Source(abc.ABC):
+    """
+    ABC for Source classes.
+    """
+
+    @abc.abstractmethod
+    def parse_config(self):
+        """
+        Parse this config source.
+
+        Returns: a multiconfig.Namespace object containing the values parsed
+        from this config source.
+
+        The values should *not* be coerced to the type specified by their
+        _ConfigSpec.
+
+        Subclasses must implement this method.
+        """
+
+
+class DictSource(Source):
+    def __init__(self, config_specs, d):
+        self._config_specs = config_specs
+        self._dict = d
+
+    def parse_config(self):
+        return _namespace_from_dict(self._dict, self._config_specs)
+
+
+class ArgparseSource(Source):
     def __init__(self, config_specs):
         """
         Don't call this directly, use ConfigParser.add_source() instead.
@@ -121,7 +150,7 @@ class ArgparseSource:
         return f"--{config_name.replace('_', '-')}"
 
 
-class SimpleArgparseSource:
+class SimpleArgparseSource(Source):
     """
     Obtains config values from the command line using argparse.ArgumentParser.
 
@@ -170,7 +199,7 @@ class SimpleArgparseSource:
         return self._argparse_source.parse_config()
 
 
-class JsonSource:
+class JsonSource(Source):
     """
     Obtains config values from a JSON file.
 
@@ -204,12 +233,7 @@ class JsonSource:
         """
         Don't call this directly, use ConfigParser.parse_config() instead.
         """
-        json_values = self._get_json()
-        values = Namespace()
-        for spec in self._config_specs:
-            if spec.name in json_values:
-                setattr(values, spec.name, json_values[spec.name])
-        return _namespace(values, self._config_specs)
+        return _namespace_from_dict(self._get_json(), self._config_specs)
 
     def _get_json(self):
         if self._path:
@@ -395,15 +419,15 @@ class ConfigParser:
         self._config_specs.append(spec)
         return spec
 
-    def add_source(self, source_class, **kwargs):
+    def add_source(self, source_class, *args, **kwargs):
         """
         Add a config source to this ConfigParser.
         """
-        source = source_class(copy.copy(self._config_specs), **kwargs)
+        source = source_class(copy.copy(self._config_specs), *args, **kwargs)
         self._sources.append(source)
         return source
 
-    def add_preparsed_values(self, preparsed_values):
+    def _add_preparsed_values(self, preparsed_values):
         for spec in self._config_specs:
             current = _getattr_or_none(self._parsed_values, spec.name)
             raw_new = _getattr_or_none(preparsed_values, spec.name)
@@ -420,7 +444,7 @@ class ConfigParser:
         """
         for source in self._sources:
             new_values = source.parse_config()
-            self.add_preparsed_values(new_values)
+            self._add_preparsed_values(new_values)
         return self._get_configs_with_defaults()
 
     def parse_config(self):
@@ -471,9 +495,17 @@ def _has_nonnone_attr(obj, attr):
     return _getattr_or_none(obj, attr) is not NONE
 
 
-def _namespace(obj, config_specs):
+def _namespace_from_dict(d, config_specs=None):
     ns = Namespace()
-    for spec in config_specs:
-        if _has_nonnone_attr(obj, spec.name):
-            setattr(ns, spec.name, getattr(obj, spec.name))
+    if config_specs is not None:
+        for spec in config_specs:
+            if spec.name in d:
+                setattr(ns, spec.name, d[spec.name])
+    else:
+        for k, v in d.items():
+            setattr(ns, k, v)
     return ns
+
+
+def _namespace(obj, config_specs=None):
+    return _namespace_from_dict(vars(obj), config_specs)
