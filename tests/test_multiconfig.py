@@ -415,10 +415,10 @@ def test_getattr_or_none():
     setattr(obj, "c1", "v1")
     setattr(obj, "c2", None)
     setattr(obj, "c3", mc.NONE)
-    assert mc.getattr_or_none(obj, "c1") == "v1"
-    assert mc.getattr_or_none(obj, "c2") is None
-    assert mc.getattr_or_none(obj, "c3") is mc.NONE
-    assert mc.getattr_or_none(obj, "c4") is mc.NONE
+    assert mc._getattr_or_none(obj, "c1") == "v1"
+    assert mc._getattr_or_none(obj, "c2") is None
+    assert mc._getattr_or_none(obj, "c3") is mc.NONE
+    assert mc._getattr_or_none(obj, "c4") is mc.NONE
 
 
 def test_has_nonnone_attr():
@@ -426,10 +426,10 @@ def test_has_nonnone_attr():
     setattr(obj, "c1", "v1")
     setattr(obj, "c2", None)
     setattr(obj, "c3", mc.NONE)
-    assert mc.has_nonnone_attr(obj, "c1")
-    assert mc.has_nonnone_attr(obj, "c2")
-    assert not mc.has_nonnone_attr(obj, "c3")
-    assert not mc.has_nonnone_attr(obj, "c4")
+    assert mc._has_nonnone_attr(obj, "c1")
+    assert mc._has_nonnone_attr(obj, "c2")
+    assert not mc._has_nonnone_attr(obj, "c3")
+    assert not mc._has_nonnone_attr(obj, "c4")
 
 
 def test_namespace():
@@ -442,6 +442,6 @@ def test_namespace():
     setattr(ns, "c1", "v1")
     setattr(ns, "c3", "v3")
     setattr(ns, "c4", "v4")
-    values = mc.namespace(ns, config_specs)
+    values = mc._namespace(ns, config_specs)
     expected_values = namespace_from_dict({"c1": "v1", "c4": "v4"})
     assert values == expected_values

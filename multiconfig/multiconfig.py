@@ -81,10 +81,23 @@ class Namespace:
 
 class ArgparseSource:
     def __init__(self, config_specs):
+        """
+        Don't call this directly, use ConfigParser.add_source() instead.
+        """
         self._config_specs = config_specs
         self._parsed_values = None
 
+    def parse_config(self):
+        """
+        Don't call this directly, use ConfigParser.parse_config() instead.
+        """
+        return self._parsed_values
+
     def add_configs_to_argparse_parser(self, argparse_parser):
+        """
+        Add arguments to an argparse.ArgumentParser object (or an object of a
+        subclass) to obtain config values from the command line.
+        """
         for spec in self._config_specs:
             argparse_parser.add_argument(
                 self._config_name_to_arg_name(spec.name),
@@ -94,10 +107,14 @@ class ArgparseSource:
             )
 
     def notify_parsed_args(self, argparse_namespace):
-        self._parsed_values = namespace(argparse_namespace, self._config_specs)
-
-    def parse_config(self):
-        return self._parsed_values
+        """
+        Call this method with the argparse.Namespace object returned by
+        argparse.ArgumentParser.parse_args() to notify this ArgparseSource
+        object of the results.
+        """
+        self._parsed_values = _namespace(
+            argparse_namespace, self._config_specs
+        )
 
     @staticmethod
     def _config_name_to_arg_name(config_name):
@@ -134,11 +151,17 @@ class SimpleArgparseSource(ArgparseSource):
         argument_parser_class=argparse.ArgumentParser,
         **kwargs,
     ):
+        """
+        Don't call this directly, use ConfigParser.add_source() instead.
+        """
         super().__init__(config_specs)
         self._argparse_parser = argument_parser_class(**kwargs)
         super().add_configs_to_argparse_parser(self._argparse_parser)
 
     def parse_config(self):
+        """
+        Don't call this directly, use ConfigParser.parse_config() instead.
+        """
         super().notify_parsed_args(self._argparse_parser.parse_args())
         return super().parse_config()
 
@@ -160,6 +183,9 @@ class JsonSource:
     """
 
     def __init__(self, config_specs, path=None, fileobj=None):
+        """
+        Don't call this directly, use ConfigParser.add_source() instead.
+        """
         self._config_specs = config_specs
         self._path = path
         self._fileobj = fileobj
@@ -171,12 +197,15 @@ class JsonSource:
             )
 
     def parse_config(self):
+        """
+        Don't call this directly, use ConfigParser.parse_config() instead.
+        """
         json_values = self._get_json()
         values = Namespace()
         for spec in self._config_specs:
             if spec.name in json_values:
                 setattr(values, spec.name, json_values[spec.name])
-        return namespace(values, self._config_specs)
+        return _namespace(values, self._config_specs)
 
     def _get_json(self):
         if self._path:
@@ -187,6 +216,10 @@ class JsonSource:
 
 
 class _ConfigSpec(abc.ABC):
+    """
+    Base class for config specifications.
+    """
+
     # Dict of subclasses that handle specific actions. The name of the action
     # is the dict item's key and the subclass is the dict item's value.
     _subclasses = {}
@@ -224,16 +257,40 @@ class _ConfigSpec(abc.ABC):
         return cls._subclasses[action](**kwargs)
 
     def __init__(self, name, help=None):
+        """
+        Don't call this directly - use create() instead.
+        """
         self._set_name(name)
         self.help = help
 
     @abc.abstractmethod
-    def accumulate_value(self, current, new):
-        ...
+    def accumulate_value(self, current, raw_new):
+        """
+        Combine a new raw value for this config with any existing value.
+
+        This method must be implemented by subclasses.
+
+        Args:
+        * current: The current value for this config item (which may be NONE).
+        * raw_new: The new value to combine with the current value for this
+          config item. The value has *not* already been coerced to the config's
+          type - this function is responsible for doing that if required.
+
+        Returns: the new combined value.
+        """
 
     @abc.abstractmethod
     def apply_default(self, value):
-        ...
+        """
+        Returns a value for this config item after applying defaults.
+
+        This method must be implemented by subclasses.
+
+        Args:
+        * value: The current value for this config item (which maybe NONE).
+          This value has already been coerced to the config's type (unless it
+          is NONE).
+        """
 
     def _set_name(self, name):
         if re.match(r"[^0-9A-Za-z_]", name) or re.match(r"^[^a-zA-Z_]", name):
@@ -244,6 +301,11 @@ class _ConfigSpec(abc.ABC):
         self.name = name
 
     def _set_type(self, type):
+        """
+        Validate and set the type of this config item.
+
+        This is a default implementation that may be called by subclasses.
+        """
         if not callable(type):
             raise TypeError("'type' argument must be callable")
         self.type = type
@@ -262,6 +324,9 @@ class _StoreConfigSpec(_ConfigSpec):
         required=False,
         **kwargs,
     ):
+        """
+        Do not call this directly - use _ConfigItem.create() instead.
+        """
         super().__init__(**kwargs)
         self._set_nargs(nargs)
         self._set_const(const)
@@ -301,37 +366,65 @@ class _StoreConfigSpec(_ConfigSpec):
 
 
 class ConfigParser:
-    def __init__(self, config_default=NONE):
+    def __init__(self, config_default=None):
+        """
+        Create a ConfigParser object.
+
+        Args:
+        * config_default: the value to use in the multiconfig.Namespace
+          returned by parse_config() for config items for which a value was not
+          found in any config source. The default behaviour is to represent
+          these config items with None. Set config_default to
+          multiconfig.SUPPRESS to prevent these configs from having an
+          attribute set in the Namespace at all.
+        """
         self._config_specs = []
         self._sources = []
         self._parsed_values = Namespace()
         self._global_default = config_default
 
     def add_config(self, name, **kwargs):
+        """
+        Add a config item to this ConfigParser.
+        """
         spec = _ConfigSpec.create(name=name, **kwargs)
         self._config_specs.append(spec)
         return spec
 
     def add_source(self, source_class, **kwargs):
+        """
+        Add a config source to this ConfigParser.
+        """
         source = source_class(copy.copy(self._config_specs), **kwargs)
         self._sources.append(source)
         return source
 
     def add_preparsed_values(self, preparsed_values):
         for spec in self._config_specs:
-            current = getattr_or_none(self._parsed_values, spec.name)
-            raw_new = getattr_or_none(preparsed_values, spec.name)
+            current = _getattr_or_none(self._parsed_values, spec.name)
+            raw_new = _getattr_or_none(preparsed_values, spec.name)
             new = spec.accumulate_value(current, raw_new)
             if new is not NONE:
                 setattr(self._parsed_values, spec.name, new)
 
     def partially_parse_config(self):
+        """
+        Parse the config sources, but don't raise a RequiredConfigNotFoundError
+        exception if a required config is not found in any config source.
+
+        Returns: a multiconfig.Namespace object containing the parsed values.
+        """
         for source in self._sources:
             new_values = source.parse_config()
             self.add_preparsed_values(new_values)
         return self._get_configs_with_defaults()
 
     def parse_config(self):
+        """
+        Parse the config sources.
+
+        Returns: a multiconfig.Namespace object containing the parsed values.
+        """
         values = self.partially_parse_config()
         self._check_required_configs()
         return values
@@ -339,7 +432,7 @@ class ConfigParser:
     def _get_configs_with_defaults(self):
         values = copy.copy(self._parsed_values)
         for spec in self._config_specs:
-            value = getattr_or_none(values, spec.name)
+            value = _getattr_or_none(values, spec.name)
             if value is NONE:
                 value = spec.apply_default(value)
             if value is not NONE:
@@ -352,7 +445,7 @@ class ConfigParser:
 
     def _check_required_configs(self):
         for spec in self._config_specs:
-            if not has_nonnone_attr(self._parsed_values, spec.name):
+            if not _has_nonnone_attr(self._parsed_values, spec.name):
                 if spec.required:
                     raise RequiredConfigNotFoundError(
                         f"Did not find value for config item '{spec.name}'"
@@ -364,19 +457,19 @@ class ConfigParser:
 # ------------------------------------------------------------------------------
 
 
-def getattr_or_none(obj, attr):
+def _getattr_or_none(obj, attr):
     if hasattr(obj, attr):
         return getattr(obj, attr)
     return NONE
 
 
-def has_nonnone_attr(obj, attr):
-    return getattr_or_none(obj, attr) is not NONE
+def _has_nonnone_attr(obj, attr):
+    return _getattr_or_none(obj, attr) is not NONE
 
 
-def namespace(obj, config_specs):
+def _namespace(obj, config_specs):
     ns = Namespace()
     for spec in config_specs:
-        if has_nonnone_attr(obj, spec.name):
+        if _has_nonnone_attr(obj, spec.name):
             setattr(ns, spec.name, getattr(obj, spec.name))
     return ns
