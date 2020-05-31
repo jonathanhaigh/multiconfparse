@@ -121,7 +121,7 @@ class ArgparseSource:
         return f"--{config_name.replace('_', '-')}"
 
 
-class SimpleArgparseSource(ArgparseSource):
+class SimpleArgparseSource:
     """
     Obtains config values from the command line using argparse.ArgumentParser.
 
@@ -154,16 +154,20 @@ class SimpleArgparseSource(ArgparseSource):
         """
         Don't call this directly, use ConfigParser.add_source() instead.
         """
-        super().__init__(config_specs)
+        self._argparse_source = ArgparseSource(config_specs)
         self._argparse_parser = argument_parser_class(**kwargs)
-        super().add_configs_to_argparse_parser(self._argparse_parser)
+        self._argparse_source.add_configs_to_argparse_parser(
+            self._argparse_parser
+        )
 
     def parse_config(self):
         """
         Don't call this directly, use ConfigParser.parse_config() instead.
         """
-        super().notify_parsed_args(self._argparse_parser.parse_args())
-        return super().parse_config()
+        self._argparse_source.notify_parsed_args(
+            self._argparse_parser.parse_args()
+        )
+        return self._argparse_source.parse_config()
 
 
 class JsonSource:
