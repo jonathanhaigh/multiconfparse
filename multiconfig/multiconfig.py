@@ -72,6 +72,11 @@ class _PresentWithoutValue:
 
 PRESENT_WITHOUT_VALUE = _PresentWithoutValue()
 
+
+def present_without_value(v):
+    return PRESENT_WITHOUT_VALUE
+
+
 # ------------------------------------------------------------------------------
 # Classes
 # ------------------------------------------------------------------------------
@@ -335,11 +340,12 @@ class _ConfigSpec(abc.ABC):
             raise ValueError(f"unknown action '{action}'")
         return cls._subclasses[action](**kwargs)
 
-    def __init__(self, name, help=None):
+    def __init__(self, name, type=str, help=None):
         """
         Don't call this directly - use create() instead.
         """
         self._set_name(name)
+        self._set_type(type)
         self.help = help
 
     @abc.abstractmethod
@@ -398,7 +404,6 @@ class _StoreConfigSpec(_ConfigSpec):
         nargs=NONE,
         const=NONE,
         default=NONE,
-        type=str,
         choices=NONE,
         required=False,
         **kwargs,
@@ -410,7 +415,6 @@ class _StoreConfigSpec(_ConfigSpec):
         self._set_nargs(nargs)
         self._set_const(const)
         self.default = default
-        super()._set_type(type)
         self.choices = choices
         self.required = required
 
@@ -452,7 +456,7 @@ class _StoreConstConfigSpec(_ConfigSpec):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
-        super().__init__(**kwargs)
+        super().__init__(type=present_without_value, **kwargs)
         self.const = const
         self.default = default
         self.required = False
@@ -496,7 +500,6 @@ class _AppendConfigSpec(_ConfigSpec):
         nargs=NONE,
         const=NONE,
         default=NONE,
-        type=str,
         choices=NONE,
         required=False,
         **kwargs,
@@ -508,7 +511,6 @@ class _AppendConfigSpec(_ConfigSpec):
         self._set_nargs(nargs)
         self._set_const(const)
         self.default = default
-        super()._set_type(type)
         self.choices = choices
         self.required = required
 
@@ -558,7 +560,7 @@ class _CountConfigSpec(_ConfigSpec):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
-        super().__init__(**kwargs)
+        super().__init__(type=int, **kwargs)
         self.default = default
         self.required = required
 
