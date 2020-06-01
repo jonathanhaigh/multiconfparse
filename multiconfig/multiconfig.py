@@ -6,6 +6,7 @@
 import abc
 import argparse
 import copy
+import functools
 import json
 import re
 
@@ -128,19 +129,17 @@ class DictSource(Source):
     def parse_config(self):
         ns = Namespace()
         for spec in self._config_specs:
-            if spec.name in self._dict:
-                if spec.action == "store":
-                    setattr(ns, spec.name, self._dict[spec.name])
-                elif spec.action in (
-                    "store_const",
-                    "store_true",
-                    "store_false",
-                ):
-                    setattr(ns, spec.name, PRESENT_WITHOUT_VALUE)
-                elif spec.action == "append":
-                    setattr(ns, spec.name, [self._dict[spec.name]])
-                elif spec.action == "count":
-                    setattr(ns, spec.name, 1)
+            if spec.name not in self._dict:
+                continue
+            value = self._dict[spec.name]
+            if spec.action in (
+                "store_const",
+                "store_true",
+                "store_false",
+                "count",
+            ):
+                value = PRESENT_WITHOUT_VALUE
+            setattr(ns, spec.name, [value])
         return ns
 
 
@@ -165,25 +164,26 @@ class ArgparseSource(Source):
         """
         for spec in self._config_specs:
             arg_name = self._config_name_to_arg_name(spec.name)
-            if spec.action == "store":
-                argparse_parser.add_argument(
-                    arg_name, default=NONE, type=str, help=spec.help,
-                )
-            elif spec.action in ("store_const", "store_true", "store_false"):
+            if spec.action in ("store", "append"):
                 argparse_parser.add_argument(
                     arg_name,
-                    action="store_const",
-                    default=NONE,
-                    const=PRESENT_WITHOUT_VALUE,
+                    action="append",
+                    default=[],
+                    type=str,
                     help=spec.help,
                 )
-            elif spec.action == "append":
+            elif spec.action in (
+                "store_const",
+                "store_true",
+                "store_false",
+                "count",
+            ):
                 argparse_parser.add_argument(
-                    arg_name, action="append", type=str, help=spec.help
-                )
-            elif spec.action == "count":
-                argparse_parser.add_argument(
-                    arg_name, action="count", help=spec.help
+                    arg_name,
+                    action="append_const",
+                    default=[],
+                    const=PRESENT_WITHOUT_VALUE,
+                    help=spec.help,
                 )
             else:
                 # Ignore actions that this source can't handle - maybe another
@@ -200,14 +200,9 @@ class ArgparseSource(Source):
         for spec in self._config_specs:
             if not hasattr(argparse_namespace, spec.name):
                 continue
-            value = getattr(argparse_namespace, spec.name)
-            if value is NONE:
-                continue
-            if spec.action == "append" and value is None:
-                continue
-            if spec.action == "count" and value is None:
-                continue
-            setattr(ns, spec.name, value)
+            values = getattr(argparse_namespace, spec.name)
+            if values:
+                setattr(ns, spec.name, values)
         self._parsed_values = ns
 
     @staticmethod
@@ -347,6 +342,9 @@ class _ConfigSpec(abc.ABC):
         self._set_name(name)
         self._set_type(type)
         self.help = help
+
+    def accumulate_values(self, current, raw_news):
+        return functools.reduce(self.accumulate_value, raw_news, current)
 
     @abc.abstractmethod
     def accumulate_value(self, current, raw_new):
@@ -516,16 +514,12 @@ class _AppendConfigSpec(_ConfigSpec):
 
     def accumulate_value(self, current, raw_new):
         assert raw_new is not NONE
+        new = self.type(raw_new)
+        if self.choices is not NONE and new not in self.choices:
+            raise InvalidChoiceError(self, new)
         if current is NONE:
-            new = []
-        else:
-            new = copy.copy(current)
-        for raw_value in raw_new:
-            value = self.type(raw_value)
-            if self.choices is not NONE and value not in self.choices:
-                raise InvalidChoiceError(self, value)
-            new.append(value)
-        return new
+            return [new]
+        return current + [new]
 
     def apply_default(self, value):
         if self.default is not NONE:
@@ -565,11 +559,10 @@ class _CountConfigSpec(_ConfigSpec):
         self.required = required
 
     def accumulate_value(self, current, raw_new):
-        assert raw_new is not NONE
+        assert raw_new is PRESENT_WITHOUT_VALUE
         if current is NONE:
-            return raw_new
-        else:
-            return current + raw_new
+            return 1
+        return current + 1
 
     def apply_default(self, value):
         if self.default is NONE:
@@ -618,10 +611,10 @@ class ConfigParser:
             if not hasattr(preparsed_values, spec.name):
                 continue
             current = _getattr_or_none(self._parsed_values, spec.name)
-            raw_new = getattr(preparsed_values, spec.name)
-            new = spec.accumulate_value(current, raw_new)
-            if new is not NONE:
-                setattr(self._parsed_values, spec.name, new)
+            raw_news = getattr(preparsed_values, spec.name)
+            new = spec.accumulate_values(current, raw_news)
+            assert new is not NONE
+            setattr(self._parsed_values, spec.name, new)
 
     def partially_parse_config(self):
         """
