@@ -64,6 +64,14 @@ class _None:
 
 NONE = _None()
 
+
+class _PresentWithoutValue:
+    def __str__(self):
+        return "==PRESENT_WITHOUT_VALUE=="
+
+
+PRESENT_WITHOUT_VALUE = _PresentWithoutValue()
+
 # ------------------------------------------------------------------------------
 # Classes
 # ------------------------------------------------------------------------------
@@ -123,7 +131,7 @@ class DictSource(Source):
                     "store_true",
                     "store_false",
                 ):
-                    setattr(ns, spec.name, True)
+                    setattr(ns, spec.name, PRESENT_WITHOUT_VALUE)
                 elif spec.action == "append":
                     setattr(ns, spec.name, [self._dict[spec.name]])
                 elif spec.action == "count":
@@ -159,8 +167,9 @@ class ArgparseSource(Source):
             elif spec.action in ("store_const", "store_true", "store_false"):
                 argparse_parser.add_argument(
                     arg_name,
-                    action="store_true",
+                    action="store_const",
                     default=NONE,
+                    const=PRESENT_WITHOUT_VALUE,
                     help=spec.help,
                 )
             elif spec.action == "append":
@@ -187,6 +196,8 @@ class ArgparseSource(Source):
             if not hasattr(argparse_namespace, spec.name):
                 continue
             value = getattr(argparse_namespace, spec.name)
+            if value is NONE:
+                continue
             if spec.action == "append" and value is None:
                 continue
             if spec.action == "count" and value is None:
@@ -404,8 +415,7 @@ class _StoreConfigSpec(_ConfigSpec):
         self.required = required
 
     def accumulate_value(self, current, raw_new):
-        if raw_new is NONE:
-            return current
+        assert raw_new is not NONE
         new = self.type(raw_new)
         if self.choices is not NONE and new not in self.choices:
             raise InvalidChoiceError(self, new)
@@ -448,14 +458,14 @@ class _StoreConstConfigSpec(_ConfigSpec):
         self.required = False
 
     def accumulate_value(self, current, raw_new):
-        if raw_new is NONE:
-            return current
-        return self.const
+        assert raw_new is PRESENT_WITHOUT_VALUE
+        return PRESENT_WITHOUT_VALUE
 
     def apply_default(self, value):
-        if value is NONE and self.default is not NONE:
-            return self.default
-        return value
+        if value is PRESENT_WITHOUT_VALUE:
+            return self.const
+        assert value is NONE
+        return self.default
 
 
 class _StoreTrueConfigSpec(_StoreConstConfigSpec):
@@ -503,8 +513,7 @@ class _AppendConfigSpec(_ConfigSpec):
         self.required = required
 
     def accumulate_value(self, current, raw_new):
-        if raw_new is NONE:
-            return current
+        assert raw_new is not NONE
         if current is NONE:
             new = []
         else:
@@ -554,8 +563,7 @@ class _CountConfigSpec(_ConfigSpec):
         self.required = required
 
     def accumulate_value(self, current, raw_new):
-        if raw_new is NONE:
-            return current
+        assert raw_new is not NONE
         if current is NONE:
             return raw_new
         else:
@@ -605,8 +613,10 @@ class ConfigParser:
 
     def _add_preparsed_values(self, preparsed_values):
         for spec in self._config_specs:
+            if not hasattr(preparsed_values, spec.name):
+                continue
             current = _getattr_or_none(self._parsed_values, spec.name)
-            raw_new = _getattr_or_none(preparsed_values, spec.name)
+            raw_new = getattr(preparsed_values, spec.name)
             new = spec.accumulate_value(current, raw_new)
             if new is not NONE:
                 setattr(self._parsed_values, spec.name, new)
