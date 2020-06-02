@@ -593,6 +593,20 @@ nargs_test_specs = [
         "--c v w",
         [["d"], ["v", "w"]],
     ),
+    Spec({"action": "extend", "nargs": "*"}, mc.NONE, "", Exception),
+    Spec({"action": "extend", "const": "v"}, mc.NONE, "", Exception),
+    Spec({"action": "extend"}, mc.NONE, "", None),
+    Spec({"action": "extend"}, [], "--c", Exception,),
+    Spec({"action": "extend"}, ["v"], "--c v", ["v"]),
+    Spec({"action": "extend"}, ["v", "w"], "--c v w", ["v", "w"]),
+    Spec({"action": "extend", "default": ["d"]}, mc.NONE, "", ["d"],),
+    Spec({"action": "extend", "default": ["d"]}, ["v"], "--c v", ["d", "v"],),
+    Spec(
+        {"action": "extend", "default": ["d"]},
+        ["v", "w"],
+        "--c v w",
+        ["d", "v", "w"],
+    ),
 ]
 
 

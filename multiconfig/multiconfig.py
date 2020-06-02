@@ -348,7 +348,7 @@ class _ConfigSpec(abc.ABC):
         Factory to obtain _ConfigSpec objects with the correct subclass to
         handle the given action.
         """
-        if action in ("append_const", "extend",):
+        if action == "append_const":
             raise NotImplementedError(
                 f"action '{action}' has not been implemented"
             )
@@ -661,6 +661,31 @@ class _CountConfigSpec(_ConfigSpec):
             return value
         if value is NONE:
             return self.default
+        return self.default + value
+
+
+class _ExtendConfigSpec(_ConfigSpecWithChoices):
+    action = "extend"
+
+    def __init__(self, default=NONE, **kwargs):
+        """
+        Do not call this directly - use _ConfigItem.create() instead.
+        """
+        super().__init__(nargs="+", **kwargs)
+        self.default = default
+
+    def _accumulate_processed_value(self, current, new):
+        assert new is not NONE
+        assert isinstance(new, list)
+        if current is NONE:
+            return new
+        return current + new
+
+    def apply_default(self, value):
+        if value is NONE:
+            return self.default
+        if self.default is NONE:
+            return value
         return self.default + value
 
 
