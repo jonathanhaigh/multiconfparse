@@ -335,12 +335,13 @@ class _ConfigSpec(abc.ABC):
             raise ValueError(f"unknown action '{action}'")
         return cls._subclasses[action](**kwargs)
 
-    def __init__(self, name, type=str, help=None):
+    def __init__(self, name, type=str, required=False, help=None):
         """
         Don't call this directly - use create() instead.
         """
         self._set_name(name)
         self._set_type(type)
+        self.required = required
         self.help = help
 
     def accumulate_values(self, current, raw_news):
@@ -398,13 +399,7 @@ class _StoreConfigSpec(_ConfigSpec):
     action = "store"
 
     def __init__(
-        self,
-        nargs=NONE,
-        const=NONE,
-        default=NONE,
-        choices=NONE,
-        required=False,
-        **kwargs,
+        self, nargs=NONE, const=NONE, default=NONE, choices=NONE, **kwargs,
     ):
         """
         Do not call this directly - use _ConfigItem.create() instead.
@@ -414,7 +409,6 @@ class _StoreConfigSpec(_ConfigSpec):
         self._set_const(const)
         self.default = default
         self.choices = choices
-        self.required = required
 
     def accumulate_value(self, current, raw_new):
         assert raw_new is not NONE
@@ -454,10 +448,9 @@ class _StoreConstConfigSpec(_ConfigSpec):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
-        super().__init__(type=present_without_value, **kwargs)
+        super().__init__(type=present_without_value, required=False, **kwargs)
         self.const = const
         self.default = default
-        self.required = False
 
     def accumulate_value(self, current, raw_new):
         assert raw_new is PRESENT_WITHOUT_VALUE
@@ -494,13 +487,7 @@ class _AppendConfigSpec(_ConfigSpec):
     action = "append"
 
     def __init__(
-        self,
-        nargs=NONE,
-        const=NONE,
-        default=NONE,
-        choices=NONE,
-        required=False,
-        **kwargs,
+        self, nargs=NONE, const=NONE, default=NONE, choices=NONE, **kwargs,
     ):
         """
         Do not call this directly - use _ConfigItem.create() instead.
@@ -510,7 +497,6 @@ class _AppendConfigSpec(_ConfigSpec):
         self._set_const(const)
         self.default = default
         self.choices = choices
-        self.required = required
 
     def accumulate_value(self, current, raw_new):
         assert raw_new is not NONE
@@ -549,14 +535,13 @@ class _CountConfigSpec(_ConfigSpec):
     action = "count"
 
     def __init__(
-        self, default=NONE, required=False, **kwargs,
+        self, default=NONE, **kwargs,
     ):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
         super().__init__(type=int, **kwargs)
         self.default = default
-        self.required = required
 
     def accumulate_value(self, current, raw_new):
         assert raw_new is PRESENT_WITHOUT_VALUE
