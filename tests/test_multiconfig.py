@@ -393,6 +393,250 @@ def test_count_missing_with_default():
     assert values == expected_values
 
 
+class Spec:
+    def __init__(self, config_args, dict_source, argparse_source, expected):
+        self.config_args = config_args
+        self.dict_source = dict_source
+        self.argparse_source = argparse_source
+        self.expected = expected
+
+    def __repr__(self):
+        return str(vars(self))
+
+
+nargs_test_specs = [
+    Spec({"nargs": 0}, mc.NONE, "", Exception),
+    Spec({"nargs": 1, "const": 1}, mc.NONE, "", Exception),
+    Spec({"nargs": 1}, mc.NONE, "", None),
+    Spec({"nargs": 1}, "v", "--c v", ["v"]),
+    Spec({"nargs": 1, "default": "d"}, mc.NONE, "", "d"),
+    Spec({"nargs": 1, "default": "d"}, "v", "--c v", ["v"]),
+    Spec({"nargs": 2}, mc.NONE, "", None),
+    Spec({"nargs": 2}, ["v"], "--c v", Exception),
+    Spec({"nargs": 2}, ["v", "w"], "--c v w", ["v", "w"]),
+    Spec({"nargs": 2, "default": ["d", "e"]}, mc.NONE, "", ["d", "e"]),
+    Spec(
+        {"nargs": 2, "default": ["d", "e"]}, ["v", "w"], "--c v w", ["v", "w"]
+    ),
+    Spec({"nargs": "?"}, mc.NONE, "", None),
+    Spec({"nargs": "?"}, mc.PRESENT_WITHOUT_VALUE, "--c", None),
+    Spec({"nargs": "?"}, "v", "--c v", "v"),
+    Spec({"nargs": "?", "default": "d"}, mc.NONE, "", "d"),
+    Spec(
+        {"nargs": "?", "default": "d"}, mc.PRESENT_WITHOUT_VALUE, "--c", None
+    ),
+    Spec({"nargs": "?", "default": "d"}, "v", "--c v", "v"),
+    Spec({"nargs": "?", "const": "c"}, mc.NONE, "", None),
+    Spec({"nargs": "?", "const": "c"}, mc.PRESENT_WITHOUT_VALUE, "--c", "c"),
+    Spec({"nargs": "?", "const": "c"}, "v", "--c v", "v"),
+    Spec({"nargs": "?", "const": "c", "default": "d"}, mc.NONE, "", "d"),
+    Spec(
+        {"nargs": "?", "const": "c", "default": "d"},
+        mc.PRESENT_WITHOUT_VALUE,
+        "--c",
+        "c",
+    ),
+    Spec({"nargs": "?", "const": "c", "default": "d"}, "v", "--c v", "v"),
+    Spec({"nargs": "*"}, mc.NONE, "", None),
+    Spec({"nargs": "*"}, [], "--c", []),
+    Spec({"nargs": "*"}, ["v"], "--c v", ["v"]),
+    Spec({"nargs": "*"}, ["v", "w"], "--c v w", ["v", "w"]),
+    Spec({"nargs": "*", "default": ["d"]}, mc.NONE, "", ["d"]),
+    Spec({"nargs": "*", "default": ["d"]}, [], "--c", []),
+    Spec({"nargs": "*", "default": ["d"]}, ["v"], "--c v", ["v"]),
+    Spec({"nargs": "*", "default": ["d"]}, ["v", "w"], "--c v w", ["v", "w"]),
+    Spec({"nargs": "+"}, mc.NONE, "", None),
+    Spec({"nargs": "+"}, [], "--c", Exception),
+    Spec({"nargs": "+"}, ["v"], "--c v", ["v"]),
+    Spec({"nargs": "+"}, ["v", "w"], "--c v w", ["v", "w"]),
+    Spec({"nargs": "+", "default": ["d"]}, mc.NONE, "", ["d"]),
+    Spec({"nargs": "+", "default": ["d"]}, ["v"], "--c v", ["v"]),
+    Spec({"nargs": "+", "default": ["d"]}, ["v", "w"], "--c v w", ["v", "w"]),
+    Spec({"action": "append", "nargs": 0}, mc.NONE, "", Exception),
+    Spec({"action": "append", "nargs": 1, "const": 1}, mc.NONE, "", Exception),
+    Spec({"action": "append", "nargs": 1}, "v", "--c v", [["v"]]),
+    Spec({"action": "append", "nargs": 1}, mc.NONE, "", None),
+    Spec(
+        {"action": "append", "nargs": 1, "default": [["d"]]},
+        "v",
+        "--c v",
+        [["d"], ["v"]],
+    ),
+    Spec(
+        {"action": "append", "nargs": 1, "default": [["d"]]},
+        mc.NONE,
+        "",
+        [["d"]],
+    ),
+    Spec({"action": "append", "nargs": 2}, mc.NONE, "", None),
+    Spec({"action": "append", "nargs": 2}, ["v"], "--c v", Exception,),
+    Spec(
+        {"action": "append", "nargs": 2}, ["v", "w"], "--c v w", [["v", "w"]]
+    ),
+    Spec(
+        {"action": "append", "nargs": 2, "default": [["d", "e"]]},
+        mc.NONE,
+        "",
+        [["d", "e"]],
+    ),
+    Spec(
+        {"action": "append", "nargs": 2, "default": [["d", "e"]]},
+        ["v", "w"],
+        "--c v w",
+        [["d", "e"], ["v", "w"]],
+    ),
+    Spec({"action": "append", "nargs": "?"}, mc.NONE, "", None),
+    Spec(
+        {"action": "append", "nargs": "?"},
+        mc.PRESENT_WITHOUT_VALUE,
+        "--c",
+        [None],
+    ),
+    Spec({"action": "append", "nargs": "?"}, "v", "--c v", ["v"]),
+    Spec(
+        {"action": "append", "nargs": "?", "default": ["d"]},
+        mc.NONE,
+        "",
+        ["d"],
+    ),
+    Spec(
+        {"action": "append", "nargs": "?", "default": ["d"]},
+        mc.PRESENT_WITHOUT_VALUE,
+        "--c",
+        ["d", None],
+    ),
+    Spec(
+        {"action": "append", "nargs": "?", "default": ["d"]},
+        "v",
+        "--c v",
+        ["d", "v"],
+    ),
+    Spec({"action": "append", "nargs": "?", "const": "c"}, mc.NONE, "", None),
+    Spec(
+        {"action": "append", "nargs": "?", "const": "c"},
+        mc.PRESENT_WITHOUT_VALUE,
+        "--c",
+        ["c"],
+    ),
+    Spec(
+        {"action": "append", "nargs": "?", "const": "c"}, "v", "--c v", ["v"]
+    ),
+    Spec(
+        {"action": "append", "nargs": "?", "const": "c", "default": ["d"]},
+        mc.NONE,
+        "",
+        ["d"],
+    ),
+    Spec(
+        {"action": "append", "nargs": "?", "const": "c", "default": ["d"]},
+        mc.PRESENT_WITHOUT_VALUE,
+        "--c",
+        ["d", "c"],
+    ),
+    Spec(
+        {"action": "append", "nargs": "?", "const": "c", "default": ["d"]},
+        "v",
+        "--c v",
+        ["d", "v"],
+    ),
+    Spec({"action": "append", "nargs": "*"}, mc.NONE, "", None),
+    Spec({"action": "append", "nargs": "*"}, [], "--c", [[]]),
+    Spec({"action": "append", "nargs": "*"}, ["v"], "--c v", [["v"]]),
+    Spec(
+        {"action": "append", "nargs": "*"}, ["v", "w"], "--c v w", [["v", "w"]]
+    ),
+    Spec(
+        {"action": "append", "nargs": "*", "default": [["d"]]},
+        mc.NONE,
+        "",
+        [["d"]],
+    ),
+    Spec(
+        {"action": "append", "nargs": "*", "default": [["d"]]},
+        [],
+        "--c",
+        [["d"], []],
+    ),
+    Spec(
+        {"action": "append", "nargs": "*", "default": [["d"]]},
+        ["v"],
+        "--c v",
+        [["d"], ["v"]],
+    ),
+    Spec(
+        {"action": "append", "nargs": "*", "default": [["d"]]},
+        ["v", "w"],
+        "--c v w",
+        [["d"], ["v", "w"]],
+    ),
+    Spec({"action": "append", "nargs": "+"}, mc.NONE, "", None),
+    Spec({"action": "append", "nargs": "+"}, [], "--c", Exception,),
+    Spec({"action": "append", "nargs": "+"}, ["v"], "--c v", [["v"]]),
+    Spec(
+        {"action": "append", "nargs": "+"}, ["v", "w"], "--c v w", [["v", "w"]]
+    ),
+    Spec(
+        {"action": "append", "nargs": "+", "default": [["d"]]},
+        mc.NONE,
+        "",
+        [["d"]],
+    ),
+    Spec(
+        {"action": "append", "nargs": "+", "default": [["d"]]},
+        ["v"],
+        "--c v",
+        [["d"], ["v"]],
+    ),
+    Spec(
+        {"action": "append", "nargs": "+", "default": [["d"]]},
+        ["v", "w"],
+        "--c v w",
+        [["d"], ["v", "w"]],
+    ),
+]
+
+
+@pytest.mark.parametrize("spec", nargs_test_specs)
+def test_nargs(spec):
+    if spec.expected is Exception:
+        with pytest.raises(Exception):
+            _test_nargs_with_dict(spec)
+        with pytest.raises(Exception):
+            _test_nargs_with_argparse(spec)
+    else:
+        _test_nargs_with_dict(spec)
+        _test_nargs_with_argparse(spec)
+
+
+def _test_nargs_with_dict(spec):
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", **spec.config_args)
+    dict_source = {}
+    if spec.dict_source is not mc.NONE:
+        dict_source["c"] = spec.dict_source
+    mc_parser.add_source(mc.DictSource, dict_source)
+    values = mc_parser.parse_config()
+    if spec.expected is mc.NONE:
+        assert not hasattr(values, "c")
+    else:
+        assert getattr(values, "c") == spec.expected
+
+
+def _test_nargs_with_argparse(spec):
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", **spec.config_args)
+    mc_parser.add_source(
+        mc.SimpleArgparseSource, argument_parser_class=RaisingArgumentParser
+    )
+    argv = ["prog", *spec.argparse_source.split()]
+    with utm.patch.object(sys, "argv", argv):
+        values = mc_parser.parse_config()
+    if spec.expected is mc.NONE:
+        assert not hasattr(values, "c")
+    else:
+        assert getattr(values, "c") == spec.expected
+
+
 # ------------------------------------------------------------------------------
 # SimpleArgparseSource tests
 # ------------------------------------------------------------------------------

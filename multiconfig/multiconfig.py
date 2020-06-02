@@ -45,6 +45,30 @@ class InvalidChoiceError(ParseError):
         )
 
 
+class InvalidNumberOfValuesError(ParseError):
+    """
+    Exception raised when the number of values supplied for a config item is
+    not valid.
+    """
+
+    def __init__(self, spec, value):
+        assert spec.nargs != ZERO_OR_MORE
+        if spec.nargs == 1:
+            expecting = "1 value"
+        elif isinstance(spec.nargs, int):
+            expecting = f"{spec.nargs} values"
+        elif spec.nargs == ZERO_OR_ONE:
+            expecting = "up to 1 value"
+        else:
+            assert spec.nargs == ONE_OR_MORE
+            expecting = "1 or more values"
+
+        super().__init__(
+            f"invalid number of values for config item {spec.name}; "
+            f"expecting {expecting}"
+        )
+
+
 # ------------------------------------------------------------------------------
 # Tags
 # ------------------------------------------------------------------------------
@@ -54,6 +78,8 @@ class _SuppressAttributeCreation:
     def __str__(self):
         return "==SUPPRESS=="
 
+    __repr__ = __str__
+
 
 SUPPRESS = _SuppressAttributeCreation()
 
@@ -61,6 +87,8 @@ SUPPRESS = _SuppressAttributeCreation()
 class _None:
     def __str__(self):
         return "==NONE=="
+
+    __repr__ = __str__
 
 
 NONE = _None()
@@ -70,6 +98,8 @@ class _PresentWithoutValue:
     def __str__(self):
         return "==PRESENT_WITHOUT_VALUE=="
 
+    __repr__ = __str__
+
 
 PRESENT_WITHOUT_VALUE = _PresentWithoutValue()
 
@@ -78,28 +108,9 @@ def present_without_value(v):
     return PRESENT_WITHOUT_VALUE
 
 
-class _ZeroOrMore:
-    def __str__(self):
-        return "*"
-
-
-ZERO_OR_MORE = _ZeroOrMore()
-
-
-class _OneOrMore:
-    def __str__(self):
-        return "+"
-
-
-ONE_OR_MORE = _OneOrMore()
-
-
-class _ZeroOrOne:
-    def __str__(self):
-        return "?"
-
-
-ZERO_OR_ONE = _ZeroOrOne()
+ZERO_OR_MORE = "*"
+ONE_OR_MORE = "+"
+ZERO_OR_ONE = "?"
 
 # ------------------------------------------------------------------------------
 # Classes
@@ -183,22 +194,22 @@ class ArgparseSource(Source):
         """
         for spec in self._config_specs:
             arg_name = self._config_name_to_arg_name(spec.name)
-            if spec.nargs is NONE:
-                argparse_parser.add_argument(
-                    arg_name,
-                    action="append",
-                    default=[],
-                    type=str,
-                    help=spec.help,
-                )
-            elif spec.nargs == 0:
-                argparse_parser.add_argument(
-                    arg_name,
-                    action="append_const",
-                    default=[],
-                    const=PRESENT_WITHOUT_VALUE,
-                    help=spec.help,
-                )
+            kwargs = {
+                "help": spec.help,
+                "default": [],
+            }
+            if spec.nargs == 0:
+                kwargs["action"] = "append_const"
+            else:
+                kwargs["action"] = "append"
+
+            if spec.nargs is not NONE and spec.nargs not in (0, 1):
+                kwargs["nargs"] = spec.nargs
+
+            if spec.nargs is ZERO_OR_ONE or spec.nargs == 0:
+                kwargs["const"] = PRESENT_WITHOUT_VALUE
+
+            argparse_parser.add_argument(arg_name, **kwargs)
 
     def notify_parsed_args(self, argparse_namespace):
         """
@@ -345,7 +356,15 @@ class _ConfigSpec(abc.ABC):
             raise ValueError(f"unknown action '{action}'")
         return cls._subclasses[action](**kwargs)
 
-    def __init__(self, name, nargs=NONE, type=str, required=False, help=None):
+    def __init__(
+        self,
+        name,
+        nargs=NONE,
+        type=str,
+        required=False,
+        choices=NONE,
+        help=None,
+    ):
         """
         Don't call this directly - use create() instead.
         """
@@ -353,23 +372,48 @@ class _ConfigSpec(abc.ABC):
         self._set_nargs(nargs)
         self._set_type(type)
         self.required = required
+        self.choices = choices
         self.help = help
 
-    def accumulate_values(self, current, raw_news):
-        return functools.reduce(self.accumulate_value, raw_news, current)
+    def accumulate_raw_values(self, current, raw_news):
+        return functools.reduce(self.accumulate_raw_value, raw_news, current)
 
-    @abc.abstractmethod
-    def accumulate_value(self, current, raw_new):
+    def accumulate_raw_value(self, current, raw_new):
         """
         Combine a new raw value for this config with any existing value.
+
+        Args:
+        * current: The current value for this config item (which may be NONE).
+        * raw_new: The new value to combine with the current value for this
+          config item. The value has not already been coerced to the config's
+          type.
+
+        Returns: the new combined value.
+        """
+        return self._accumulate_processed_value(
+            current, self._process_value(raw_new)
+        )
+
+    @abc.abstractmethod
+    def _accumulate_processed_value(self, current, new):
+        """
+        Combine a new processed value for this config with any existing value.
 
         This method must be implemented by subclasses.
 
         Args:
         * current: The current value for this config item (which may be NONE).
-        * raw_new: The new value to combine with the current value for this
-          config item. The value has *not* already been coerced to the config's
-          type - this function is responsible for doing that if required.
+        * new: The new value to combine with the current value for this config
+          item.
+
+        The new value will have:
+        * been coerced to the config's type;
+        * checked for nargs and choices validity;
+        * had values for nargs==1 converted to a single element list.
+
+        The new value will not have:
+        * had any processing for values;
+        * had any processing for const arguments.
 
         Returns: the new combined value.
         """
@@ -419,46 +463,86 @@ class _ConfigSpec(abc.ABC):
             raise TypeError("'type' argument must be callable")
         self.type = type
 
+    def _process_value(self, value):
+        assert value is not NONE
+        if self.nargs == 0:
+            assert value is PRESENT_WITHOUT_VALUE
+            return value
+        if self.nargs is NONE:
+            new = self.type(value)
+            self._validate_choice(new)
+            return new
+        if self.nargs == ZERO_OR_ONE:
+            if value is PRESENT_WITHOUT_VALUE:
+                return value
+            else:
+                new = self.type(value)
+                self._validate_choice(new)
+                return new
+        if self.nargs == 1:
+            new = [self.type(value)]
+            self._validate_choices(new)
+            return new
+        new = [self.type(v) for v in value]
+        self._validate_choices(new)
+        if self.nargs == ONE_OR_MORE and not new:
+            raise InvalidNumberOfValuesError(self, new)
+        elif isinstance(self.nargs, int) and len(new) != self.nargs:
+            raise InvalidNumberOfValuesError(self, new)
+        return new
 
-class _StoreConfigSpec(_ConfigSpec):
+    def _validate_choice(self, value):
+        if self.choices is not NONE and value not in self.choices:
+            raise InvalidChoiceError(self, value)
+
+    def _validate_choices(self, values):
+        for v in values:
+            self._validate_choice(v)
+
+
+class _ConfigSpecWithChoices(_ConfigSpec):
+    def __init__(self, choices=NONE, **kwargs):
+        """
+        Do not call this directly - use _ConfigItem.create() instead.
+        """
+        super().__init__(**kwargs)
+        self.choices = choices
+
+
+class _StoreConfigSpec(_ConfigSpecWithChoices):
     action = "store"
 
-    def __init__(
-        self, const=NONE, default=NONE, choices=NONE, **kwargs,
-    ):
+    def __init__(self, const=NONE, default=NONE, **kwargs):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
         super().__init__(**kwargs)
         self._set_const(const)
         self.default = default
-        self.choices = choices
 
-    def accumulate_value(self, current, raw_new):
-        assert raw_new is not NONE
-        new = self.type(raw_new)
-        if self.choices is not NONE and new not in self.choices:
-            raise InvalidChoiceError(self, new)
+    def _accumulate_processed_value(self, current, new):
+        assert new is not NONE
         return new
 
     def apply_default(self, value):
         if value is NONE and self.default is not NONE:
             return self.default
+        if self.nargs == ZERO_OR_ONE and value is PRESENT_WITHOUT_VALUE:
+            return self.const
         return value
 
     def _set_nargs(self, nargs):
         super()._set_nargs(nargs)
-        if self.nargs is not NONE:
-            raise NotImplementedError(
-                "'nargs' argument has not been implemented for "
-                f"'{self.action}' action"
+        if self.nargs == 0:
+            raise ValueError(
+                f"nargs == 0 is not valid for the {self.action} action"
             )
 
     def _set_const(self, const):
-        if const is not NONE:
-            raise NotImplementedError(
-                "'const' argument has not been implemented for "
-                f"'{self.action}' action"
+        if const is not NONE and self.nargs != ZERO_OR_ONE:
+            raise ValueError(
+                f"const cannot be supplied to the {self.action} action "
+                f"unless nargs is {ZERO_OR_ONE}"
             )
         self.const = const
 
@@ -478,8 +562,8 @@ class _StoreConstConfigSpec(_ConfigSpec):
         self.const = const
         self.default = default
 
-    def accumulate_value(self, current, raw_new):
-        assert raw_new is PRESENT_WITHOUT_VALUE
+    def _accumulate_processed_value(self, current, new):
+        assert new is PRESENT_WITHOUT_VALUE
         return PRESENT_WITHOUT_VALUE
 
     def apply_default(self, value):
@@ -509,49 +593,47 @@ class _StoreFalseConfigSpec(_StoreConstConfigSpec):
         super().__init__(const=False, default=default, **kwargs)
 
 
-class _AppendConfigSpec(_ConfigSpec):
+class _AppendConfigSpec(_ConfigSpecWithChoices):
     action = "append"
 
-    def __init__(
-        self, nargs=NONE, const=NONE, default=NONE, choices=NONE, **kwargs,
-    ):
+    def __init__(self, const=NONE, default=NONE, **kwargs):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
         super().__init__(**kwargs)
         self._set_const(const)
         self.default = default
-        self.choices = choices
 
-    def accumulate_value(self, current, raw_new):
-        assert raw_new is not NONE
-        new = self.type(raw_new)
-        if self.choices is not NONE and new not in self.choices:
-            raise InvalidChoiceError(self, new)
+    def _accumulate_processed_value(self, current, new):
+        assert new is not NONE
         if current is NONE:
             return [new]
         return current + [new]
 
     def apply_default(self, value):
+        if value is NONE:
+            return self.default
+        if self.nargs == ZERO_OR_ONE:
+            const = None
+            if self.const is not NONE:
+                const = self.const
+            value = [const if v is PRESENT_WITHOUT_VALUE else v for v in value]
         if self.default is not NONE:
-            if value is NONE:
-                return self.default
             return self.default + value
         return value
 
     def _set_nargs(self, nargs):
         super()._set_nargs(nargs)
-        if self.nargs is not NONE:
-            raise NotImplementedError(
-                "'nargs' argument has not been implemented for "
-                f"'{self.action}' action"
+        if self.nargs == 0:
+            raise ValueError(
+                f"nargs == 0 is not valid for the {self.action} action"
             )
 
     def _set_const(self, const):
-        if const is not NONE:
-            raise NotImplementedError(
-                "'const' argument has not been implemented for "
-                f"'{self.action}' action"
+        if const is not NONE and self.nargs != ZERO_OR_ONE:
+            raise ValueError(
+                f"const cannot be supplied to the {self.action} action "
+                f"unless nargs is {ZERO_OR_ONE}"
             )
         self.const = const
 
@@ -565,11 +647,11 @@ class _CountConfigSpec(_ConfigSpec):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
-        super().__init__(nargs=0, type=int, **kwargs)
+        super().__init__(nargs=0, type=present_without_value, **kwargs)
         self.default = default
 
-    def accumulate_value(self, current, raw_new):
-        assert raw_new is PRESENT_WITHOUT_VALUE
+    def _accumulate_processed_value(self, current, new):
+        assert new is PRESENT_WITHOUT_VALUE
         if current is NONE:
             return 1
         return current + 1
@@ -622,7 +704,7 @@ class ConfigParser:
                 continue
             current = _getattr_or_none(self._parsed_values, spec.name)
             raw_news = getattr(preparsed_values, spec.name)
-            new = spec.accumulate_values(current, raw_news)
+            new = spec.accumulate_raw_values(current, raw_news)
             assert new is not NONE
             setattr(self._parsed_values, spec.name, new)
 
