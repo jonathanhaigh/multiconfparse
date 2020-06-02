@@ -78,6 +78,29 @@ def present_without_value(v):
     return PRESENT_WITHOUT_VALUE
 
 
+class _ZeroOrMore:
+    def __str__(self):
+        return "*"
+
+
+ZERO_OR_MORE = _ZeroOrMore()
+
+
+class _OneOrMore:
+    def __str__(self):
+        return "+"
+
+
+ONE_OR_MORE = _OneOrMore()
+
+
+class _ZeroOrOne:
+    def __str__(self):
+        return "?"
+
+
+ZERO_OR_ONE = _ZeroOrOne()
+
 # ------------------------------------------------------------------------------
 # Classes
 # ------------------------------------------------------------------------------
@@ -131,14 +154,10 @@ class DictSource(Source):
         for spec in self._config_specs:
             if spec.name not in self._dict:
                 continue
-            value = self._dict[spec.name]
-            if spec.action in (
-                "store_const",
-                "store_true",
-                "store_false",
-                "count",
-            ):
+            if spec.nargs == 0:
                 value = PRESENT_WITHOUT_VALUE
+            else:
+                value = self._dict[spec.name]
             setattr(ns, spec.name, [value])
         return ns
 
@@ -164,7 +183,7 @@ class ArgparseSource(Source):
         """
         for spec in self._config_specs:
             arg_name = self._config_name_to_arg_name(spec.name)
-            if spec.action in ("store", "append"):
+            if spec.nargs is NONE:
                 argparse_parser.add_argument(
                     arg_name,
                     action="append",
@@ -172,12 +191,7 @@ class ArgparseSource(Source):
                     type=str,
                     help=spec.help,
                 )
-            elif spec.action in (
-                "store_const",
-                "store_true",
-                "store_false",
-                "count",
-            ):
+            elif spec.nargs == 0:
                 argparse_parser.add_argument(
                     arg_name,
                     action="append_const",
@@ -185,10 +199,6 @@ class ArgparseSource(Source):
                     const=PRESENT_WITHOUT_VALUE,
                     help=spec.help,
                 )
-            else:
-                # Ignore actions that this source can't handle - maybe another
-                # source can instead.
-                pass
 
     def notify_parsed_args(self, argparse_namespace):
         """
@@ -335,11 +345,12 @@ class _ConfigSpec(abc.ABC):
             raise ValueError(f"unknown action '{action}'")
         return cls._subclasses[action](**kwargs)
 
-    def __init__(self, name, type=str, required=False, help=None):
+    def __init__(self, name, nargs=NONE, type=str, required=False, help=None):
         """
         Don't call this directly - use create() instead.
         """
         self._set_name(name)
+        self._set_nargs(nargs)
         self._set_type(type)
         self.required = required
         self.help = help
@@ -379,10 +390,24 @@ class _ConfigSpec(abc.ABC):
     def _set_name(self, name):
         if re.match(r"[^0-9A-Za-z_]", name) or re.match(r"^[^a-zA-Z_]", name):
             raise ValueError(
-                f"Invalid config name '{name}', "
+                f"invalid config name '{name}', "
                 "must be a valid Python identifier"
             )
         self.name = name
+
+    def _set_nargs(self, nargs):
+        if nargs is NONE or nargs is None:
+            self.nargs = NONE
+        elif nargs == "*":
+            self.nargs = ZERO_OR_MORE
+        elif nargs == "+":
+            self.nargs = ONE_OR_MORE
+        elif nargs == "?":
+            self.nargs = ZERO_OR_ONE
+        elif isinstance(nargs, int) and nargs >= 0:
+            self.nargs = nargs
+        else:
+            raise ValueError(f"invalid nargs value {nargs}")
 
     def _set_type(self, type):
         """
@@ -399,13 +424,12 @@ class _StoreConfigSpec(_ConfigSpec):
     action = "store"
 
     def __init__(
-        self, nargs=NONE, const=NONE, default=NONE, choices=NONE, **kwargs,
+        self, const=NONE, default=NONE, choices=NONE, **kwargs,
     ):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
         super().__init__(**kwargs)
-        self._set_nargs(nargs)
         self._set_const(const)
         self.default = default
         self.choices = choices
@@ -423,12 +447,12 @@ class _StoreConfigSpec(_ConfigSpec):
         return value
 
     def _set_nargs(self, nargs):
-        if nargs is not NONE:
+        super()._set_nargs(nargs)
+        if self.nargs is not NONE:
             raise NotImplementedError(
                 "'nargs' argument has not been implemented for "
-                "'{self.action}' action"
+                f"'{self.action}' action"
             )
-        self.nargs = nargs
 
     def _set_const(self, const):
         if const is not NONE:
@@ -448,7 +472,9 @@ class _StoreConstConfigSpec(_ConfigSpec):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
-        super().__init__(type=present_without_value, required=False, **kwargs)
+        super().__init__(
+            nargs=0, type=present_without_value, required=False, **kwargs
+        )
         self.const = const
         self.default = default
 
@@ -493,7 +519,6 @@ class _AppendConfigSpec(_ConfigSpec):
         Do not call this directly - use _ConfigItem.create() instead.
         """
         super().__init__(**kwargs)
-        self._set_nargs(nargs)
         self._set_const(const)
         self.default = default
         self.choices = choices
@@ -515,12 +540,12 @@ class _AppendConfigSpec(_ConfigSpec):
         return value
 
     def _set_nargs(self, nargs):
-        if nargs is not NONE:
+        super()._set_nargs(nargs)
+        if self.nargs is not NONE:
             raise NotImplementedError(
                 "'nargs' argument has not been implemented for "
-                "'{self.action}' action"
+                f"'{self.action}' action"
             )
-        self.nargs = nargs
 
     def _set_const(self, const):
         if const is not NONE:
@@ -540,7 +565,7 @@ class _CountConfigSpec(_ConfigSpec):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
-        super().__init__(type=int, **kwargs)
+        super().__init__(nargs=0, type=int, **kwargs)
         self.default = default
 
     def accumulate_value(self, current, raw_new):
