@@ -47,24 +47,6 @@ class RaisingArgumentParser(argparse.ArgumentParser):
 # ------------------------------------------------------------------------------
 
 
-def test_default_value_without_sources():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1")
-    mc_parser.add_config("c2", default="v2")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": None, "c2": "v2"})
-    assert values == expected_values
-
-
-def test_default_value_from_config_default():
-    mc_parser = mc.ConfigParser(config_default="v1")
-    mc_parser.add_config("c1")
-    mc_parser.add_config("c2", default="v2")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1", "c2": "v2"})
-    assert values == expected_values
-
-
 def test_suppress():
     mc_parser = mc.ConfigParser(config_default=mc.SUPPRESS)
     mc_parser.add_config("c1")
@@ -200,7 +182,7 @@ def test_invalid_int_choice():
 def test_store_const():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", action="store_const", const="v1")
-    mc_parser.add_source(mc.DictSource, {"c1": True})
+    mc_parser.add_source(mc.DictSource, {"c1": None})
     values = mc_parser.parse_config()
     expected_values = mc._namespace_from_dict({"c1": "v1"})
     assert values == expected_values
@@ -227,7 +209,7 @@ def test_store_const_default():
 def test_store_true():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", action="store_true")
-    mc_parser.add_source(mc.DictSource, {"c1": "v1"})
+    mc_parser.add_source(mc.DictSource, {"c1": None})
     values = mc_parser.parse_config()
     expected_values = mc._namespace_from_dict({"c1": True})
     assert values == expected_values
@@ -252,7 +234,7 @@ def test_store_true_default():
 def test_store_false():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", action="store_false")
-    mc_parser.add_source(mc.DictSource, {"c1": "v1"})
+    mc_parser.add_source(mc.DictSource, {"c1": None})
     values = mc_parser.parse_config()
     expected_values = mc._namespace_from_dict({"c1": False})
     assert values == expected_values
@@ -346,8 +328,8 @@ def test_append_missing_with_default():
 def test_count():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", action="count")
-    mc_parser.add_source(mc.DictSource, {"c1": True})
-    mc_parser.add_source(mc.DictSource, {"c1": False})
+    mc_parser.add_source(mc.DictSource, {"c1": None})
+    mc_parser.add_source(mc.DictSource, {"c1": None})
     values = mc_parser.parse_config()
     expected_values = mc._namespace_from_dict({"c1": 2})
     assert values == expected_values
@@ -356,8 +338,8 @@ def test_count():
 def test_count_with_default():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c1", action="count", default=10)
-    mc_parser.add_source(mc.DictSource, {"c1": True})
-    mc_parser.add_source(mc.DictSource, {"c1": False})
+    mc_parser.add_source(mc.DictSource, {"c1": None})
+    mc_parser.add_source(mc.DictSource, {"c1": None})
     values = mc_parser.parse_config()
     expected_values = mc._namespace_from_dict({"c1": 12})
     assert values == expected_values
@@ -393,237 +375,1467 @@ def test_count_missing_with_default():
     assert values == expected_values
 
 
+class _OmitTestForSource:
+    def __str__(self):
+        return "OMIT_TEST_FOR_SOURCE"
+
+    __repr__ = __str__
+
+
+OMIT_TEST_FOR_SOURCE = _OmitTestForSource()
+
+
 class Spec:
-    def __init__(self, config_args, dict_source, argparse_source, expected):
+    def __init__(
+        self,
+        id,
+        config_args,
+        expected,
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source=OMIT_TEST_FOR_SOURCE,
+        test_without_source=False,
+        config_parser_args=None,
+    ):
+        self.id = id
         self.config_args = config_args
+        self.expected = expected
         self.dict_source = dict_source
         self.argparse_source = argparse_source
-        self.expected = expected
+        self.test_without_source = test_without_source
+        self.config_parser_args = config_parser_args or {}
 
-    def __repr__(self):
+    def __str__(self):
         return str(vars(self))
 
+    __repr__ = __str__
 
-nargs_test_specs = [
-    Spec({"nargs": 0}, mc.NONE, "", Exception),
-    Spec({"nargs": 1, "const": 1}, mc.NONE, "", Exception),
-    Spec({"nargs": 1}, mc.NONE, "", None),
-    Spec({"nargs": 1}, "v", "--c v", ["v"]),
-    Spec({"nargs": 1, "default": "d"}, mc.NONE, "", "d"),
-    Spec({"nargs": 1, "default": "d"}, "v", "--c v", ["v"]),
-    Spec({"nargs": 2}, mc.NONE, "", None),
-    Spec({"nargs": 2}, ["v"], "--c v", Exception),
-    Spec({"nargs": 2}, ["v", "w"], "--c v w", ["v", "w"]),
-    Spec({"nargs": 2, "default": ["d", "e"]}, mc.NONE, "", ["d", "e"]),
+
+test_specs = []
+
+store_nargs_none_test_specs = [
     Spec(
-        {"nargs": 2, "default": ["d", "e"]}, ["v", "w"], "--c v w", ["v", "w"]
-    ),
-    Spec({"nargs": "?"}, mc.NONE, "", None),
-    Spec({"nargs": "?"}, mc.PRESENT_WITHOUT_VALUE, "--c", None),
-    Spec({"nargs": "?"}, "v", "--c v", "v"),
-    Spec({"nargs": "?", "default": "d"}, mc.NONE, "", "d"),
-    Spec(
-        {"nargs": "?", "default": "d"}, mc.PRESENT_WITHOUT_VALUE, "--c", None
-    ),
-    Spec({"nargs": "?", "default": "d"}, "v", "--c v", "v"),
-    Spec({"nargs": "?", "const": "c"}, mc.NONE, "", None),
-    Spec({"nargs": "?", "const": "c"}, mc.PRESENT_WITHOUT_VALUE, "--c", "c"),
-    Spec({"nargs": "?", "const": "c"}, "v", "--c v", "v"),
-    Spec({"nargs": "?", "const": "c", "default": "d"}, mc.NONE, "", "d"),
-    Spec(
-        {"nargs": "?", "const": "c", "default": "d"},
-        mc.PRESENT_WITHOUT_VALUE,
-        "--c",
-        "c",
-    ),
-    Spec({"nargs": "?", "const": "c", "default": "d"}, "v", "--c v", "v"),
-    Spec({"nargs": "*"}, mc.NONE, "", None),
-    Spec({"nargs": "*"}, [], "--c", []),
-    Spec({"nargs": "*"}, ["v"], "--c v", ["v"]),
-    Spec({"nargs": "*"}, ["v", "w"], "--c v w", ["v", "w"]),
-    Spec({"nargs": "*", "default": ["d"]}, mc.NONE, "", ["d"]),
-    Spec({"nargs": "*", "default": ["d"]}, [], "--c", []),
-    Spec({"nargs": "*", "default": ["d"]}, ["v"], "--c v", ["v"]),
-    Spec({"nargs": "*", "default": ["d"]}, ["v", "w"], "--c v w", ["v", "w"]),
-    Spec({"nargs": "+"}, mc.NONE, "", None),
-    Spec({"nargs": "+"}, [], "--c", Exception),
-    Spec({"nargs": "+"}, ["v"], "--c v", ["v"]),
-    Spec({"nargs": "+"}, ["v", "w"], "--c v w", ["v", "w"]),
-    Spec({"nargs": "+", "default": ["d"]}, mc.NONE, "", ["d"]),
-    Spec({"nargs": "+", "default": ["d"]}, ["v"], "--c v", ["v"]),
-    Spec({"nargs": "+", "default": ["d"]}, ["v", "w"], "--c v w", ["v", "w"]),
-    Spec({"action": "append", "nargs": 0}, mc.NONE, "", Exception),
-    Spec({"action": "append", "nargs": 1, "const": 1}, mc.NONE, "", Exception),
-    Spec({"action": "append", "nargs": 1}, "v", "--c v", [["v"]]),
-    Spec({"action": "append", "nargs": 1}, mc.NONE, "", None),
-    Spec(
-        {"action": "append", "nargs": 1, "default": [["d"]]},
-        "v",
-        "--c v",
-        [["d"], ["v"]],
+        id="store; nargs=no with const (invalid const)",
+        config_args={"const": 1},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
     ),
     Spec(
-        {"action": "append", "nargs": 1, "default": [["d"]]},
-        mc.NONE,
-        "",
-        [["d"]],
-    ),
-    Spec({"action": "append", "nargs": 2}, mc.NONE, "", None),
-    Spec({"action": "append", "nargs": 2}, ["v"], "--c v", Exception,),
-    Spec(
-        {"action": "append", "nargs": 2}, ["v", "w"], "--c v w", [["v", "w"]]
+        id="store; nargs=no; args=no; default=no",
+        config_args={},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
     ),
     Spec(
-        {"action": "append", "nargs": 2, "default": [["d", "e"]]},
-        mc.NONE,
-        "",
-        [["d", "e"]],
+        id="store; nargs=no; args=invalid0; default=no",
+        config_args={},
+        dict_source=None,
+        argparse_source="--c",
+        expected=Exception,
     ),
     Spec(
-        {"action": "append", "nargs": 2, "default": [["d", "e"]]},
-        ["v", "w"],
-        "--c v w",
-        [["d", "e"], ["v", "w"]],
-    ),
-    Spec({"action": "append", "nargs": "?"}, mc.NONE, "", None),
-    Spec(
-        {"action": "append", "nargs": "?"},
-        mc.PRESENT_WITHOUT_VALUE,
-        "--c",
-        [None],
-    ),
-    Spec({"action": "append", "nargs": "?"}, "v", "--c v", ["v"]),
-    Spec(
-        {"action": "append", "nargs": "?", "default": ["d"]},
-        mc.NONE,
-        "",
-        ["d"],
+        id="store; nargs=no; args=invalid2; default=no",
+        config_args={},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v w",
+        expected=Exception,
     ),
     Spec(
-        {"action": "append", "nargs": "?", "default": ["d"]},
-        mc.PRESENT_WITHOUT_VALUE,
-        "--c",
-        ["d", None],
+        id="store; nargs=no; args=yes; default=no",
+        config_args={},
+        dict_source="v",
+        argparse_source="--c v",
+        expected="v",
     ),
     Spec(
-        {"action": "append", "nargs": "?", "default": ["d"]},
-        "v",
-        "--c v",
-        ["d", "v"],
-    ),
-    Spec({"action": "append", "nargs": "?", "const": "c"}, mc.NONE, "", None),
-    Spec(
-        {"action": "append", "nargs": "?", "const": "c"},
-        mc.PRESENT_WITHOUT_VALUE,
-        "--c",
-        ["c"],
+        id="store; nargs=no; args=no; default=yes",
+        config_args={"default": "d"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected="d",
     ),
     Spec(
-        {"action": "append", "nargs": "?", "const": "c"}, "v", "--c v", ["v"]
+        id="store; nargs=no; args=yes; default=yes",
+        config_args={"default": "d"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected="v",
     ),
     Spec(
-        {"action": "append", "nargs": "?", "const": "c", "default": ["d"]},
-        mc.NONE,
-        "",
-        ["d"],
+        id="store; nargs=no; args=no; default=yes, config_default=yes",
+        config_args={"default": "d"},
+        config_parser_args={"config_default": "e"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected="d",
     ),
     Spec(
-        {"action": "append", "nargs": "?", "const": "c", "default": ["d"]},
-        mc.PRESENT_WITHOUT_VALUE,
-        "--c",
-        ["d", "c"],
+        id="store; nargs=no; args=no; default=no, config_default=yes",
+        config_args={},
+        config_parser_args={"config_default": "e"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected="e",
     ),
     Spec(
-        {"action": "append", "nargs": "?", "const": "c", "default": ["d"]},
-        "v",
-        "--c v",
-        ["d", "v"],
-    ),
-    Spec({"action": "append", "nargs": "*"}, mc.NONE, "", None),
-    Spec({"action": "append", "nargs": "*"}, [], "--c", [[]]),
-    Spec({"action": "append", "nargs": "*"}, ["v"], "--c v", [["v"]]),
-    Spec(
-        {"action": "append", "nargs": "*"}, ["v", "w"], "--c v w", [["v", "w"]]
-    ),
-    Spec(
-        {"action": "append", "nargs": "*", "default": [["d"]]},
-        mc.NONE,
-        "",
-        [["d"]],
-    ),
-    Spec(
-        {"action": "append", "nargs": "*", "default": [["d"]]},
-        [],
-        "--c",
-        [["d"], []],
-    ),
-    Spec(
-        {"action": "append", "nargs": "*", "default": [["d"]]},
-        ["v"],
-        "--c v",
-        [["d"], ["v"]],
-    ),
-    Spec(
-        {"action": "append", "nargs": "*", "default": [["d"]]},
-        ["v", "w"],
-        "--c v w",
-        [["d"], ["v", "w"]],
-    ),
-    Spec({"action": "append", "nargs": "+"}, mc.NONE, "", None),
-    Spec({"action": "append", "nargs": "+"}, [], "--c", Exception,),
-    Spec({"action": "append", "nargs": "+"}, ["v"], "--c v", [["v"]]),
-    Spec(
-        {"action": "append", "nargs": "+"}, ["v", "w"], "--c v w", [["v", "w"]]
-    ),
-    Spec(
-        {"action": "append", "nargs": "+", "default": [["d"]]},
-        mc.NONE,
-        "",
-        [["d"]],
-    ),
-    Spec(
-        {"action": "append", "nargs": "+", "default": [["d"]]},
-        ["v"],
-        "--c v",
-        [["d"], ["v"]],
-    ),
-    Spec(
-        {"action": "append", "nargs": "+", "default": [["d"]]},
-        ["v", "w"],
-        "--c v w",
-        [["d"], ["v", "w"]],
-    ),
-    Spec({"action": "extend", "nargs": "*"}, mc.NONE, "", Exception),
-    Spec({"action": "extend", "const": "v"}, mc.NONE, "", Exception),
-    Spec({"action": "extend"}, mc.NONE, "", None),
-    Spec({"action": "extend"}, [], "--c", Exception,),
-    Spec({"action": "extend"}, ["v"], "--c v", ["v"]),
-    Spec({"action": "extend"}, ["v", "w"], "--c v w", ["v", "w"]),
-    Spec({"action": "extend", "default": ["d"]}, mc.NONE, "", ["d"],),
-    Spec({"action": "extend", "default": ["d"]}, ["v"], "--c v", ["d", "v"],),
-    Spec(
-        {"action": "extend", "default": ["d"]},
-        ["v", "w"],
-        "--c v w",
-        ["d", "v", "w"],
+        id="store; nargs=no; args=yes; default=no, config_default=yes",
+        config_args={},
+        config_parser_args={"config_default": "e"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected="v",
     ),
 ]
+test_specs.extend(store_nargs_none_test_specs)
+
+store_nargs_0_test_specs = [
+    Spec(
+        id="store; nargs=0 (invalid nargs)",
+        config_args={"nargs": 0},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+]
+test_specs.extend(store_nargs_0_test_specs)
+
+store_nargs_1_test_specs = [
+    Spec(
+        id="store; nargs=1 with const (invalid const)",
+        config_args={"nargs": 1, "const": 1},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+    Spec(
+        id="store; nargs=1; args=no; default=no",
+        config_args={"nargs": 1},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="store; nargs=1; args=invalid0; default=no",
+        config_args={"nargs": 1},
+        dict_source=None,
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="store; nargs=1; args=invalid2; default=no",
+        config_args={"nargs": 1},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v w",
+        expected=Exception,
+    ),
+    Spec(
+        id="store; nargs=1; args=yes; default=no",
+        config_args={"nargs": 1},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+    Spec(
+        id="store; nargs=1; args=no; default=yes",
+        config_args={"nargs": 1, "default": ["d"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="store; nargs=1; args=yes; default=yes",
+        config_args={"nargs": 1, "default": ["d"]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+    Spec(
+        id="store; nargs=1; args=no; default=yes, config_default=yes",
+        config_args={"nargs": 1, "default": ["d"]},
+        config_parser_args={"config_default": ["e"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="store; nargs=1; args=no; default=no, config_default=yes",
+        config_args={"nargs": 1},
+        config_parser_args={"config_default": ["e"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["e"],
+    ),
+    Spec(
+        id="store; nargs=1; args=yes; default=no, config_default=yes",
+        config_args={"nargs": 1},
+        config_parser_args={"config_default": ["e"]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+]
+test_specs.extend(store_nargs_1_test_specs)
+
+store_nargs_2_test_specs = [
+    Spec(
+        id="store; nargs=2 with const (invalid const)",
+        config_args={"nargs": 2, "const": 1},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+    Spec(
+        id="store; nargs=2; args=no; default=no",
+        config_args={"nargs": 2},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="store; nargs=2, args=invalid0; default=no",
+        config_args={"nargs": 2},
+        dict_source=None,
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="store; nargs=2, args=invalid1; default=no",
+        config_args={"nargs": 2},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=Exception,
+    ),
+    Spec(
+        id="store; nargs=2, args=yes; default=no",
+        config_args={"nargs": 2},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=["v", "w"],
+    ),
+    Spec(
+        id="store; nargs=2; args=no; default=yes",
+        config_args={"nargs": 2, "default": ["d", "e"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d", "e"],
+    ),
+    Spec(
+        id="store; nargs=2, args=yes, default=yes",
+        config_args={"nargs": 2, "default": ["d", "e"]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=["v", "w"],
+    ),
+    Spec(
+        id="store; nargs=2; args=no; default=yes, config_default=yes",
+        config_args={"nargs": 2, "default": ["d", "e"]},
+        config_parser_args={"config_default": ["f", "g"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d", "e"],
+    ),
+    Spec(
+        id="store; nargs=2; args=no; default=no, config_default=yes",
+        config_args={"nargs": 2},
+        config_parser_args={"config_default": ["f", "g"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["f", "g"],
+    ),
+    Spec(
+        id="store; nargs=2; args=yes; default=no, config_default=yes",
+        config_args={"nargs": 2},
+        config_parser_args={"config_default": ["f", "g"]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=["v", "w"],
+    ),
+]
+test_specs.extend(store_nargs_2_test_specs)
+
+store_nargs_q_test_specs = [
+    Spec(
+        id="store; nargs=?, args=no, default=no, const=no",
+        config_args={"nargs": "?"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="store; nargs=?, args=invalid2, default=no, const=no",
+        config_args={"nargs": "?"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c --c",
+        expected=Exception,
+    ),
+    Spec(
+        id="store; nargs=?, args=yes0, default=no, const=no",
+        config_args={"nargs": "?"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=None,
+    ),
+    Spec(
+        id="store; nargs=?, args=invalid2, default=no, const=no",
+        config_args={"nargs": "?"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v w",
+        expected=Exception,
+    ),
+    Spec(
+        id="store; nargs=?, args=yes1, default=no, const=no",
+        config_args={"nargs": "?"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected="v",
+    ),
+    Spec(
+        id="store; nargs=?, args=no, default=yes, const=no",
+        config_args={"nargs": "?", "default": "d"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected="d",
+    ),
+    Spec(
+        id="store, nargs=?, args=yes0, default=yes, const=no",
+        config_args={"nargs": "?", "default": "d"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=None,
+    ),
+    Spec(
+        id="store, nargs=?, args=yes1, default=yes, const=no",
+        config_args={"nargs": "?", "default": "d"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected="v",
+    ),
+    Spec(
+        id="store, nargs=?, args=no, default=no, const=yes",
+        config_args={"nargs": "?", "const": "c"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="store, nargs=?, args=yes0, default=no, const=yes",
+        config_args={"nargs": "?", "const": "c"},
+        dict_source=None,
+        argparse_source="--c",
+        expected="c",
+    ),
+    Spec(
+        id="store, nargs=?, args=yes1, default=no, const=yes",
+        config_args={"nargs": "?", "const": "c"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected="v",
+    ),
+    Spec(
+        id="store, nargs=?, args=no, default=yes, const=yes",
+        config_args={"nargs": "?", "const": "c", "default": "d"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected="d",
+    ),
+    Spec(
+        id="store, nargs=?, args=yes0, default=yes, const=yes",
+        config_args={"nargs": "?", "const": "c", "default": "d"},
+        dict_source=None,
+        argparse_source="--c",
+        expected="c",
+    ),
+    Spec(
+        id="store, nargs=?, args=yes1, default=yes, const=yes",
+        config_args={"nargs": "?", "const": "c", "default": "d"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected="v",
+    ),
+    Spec(
+        id="store; nargs=?; args=no; default=yes, config_default=yes",
+        config_args={"nargs": "?", "default": "d"},
+        config_parser_args={"config_default": "e"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected="d",
+    ),
+    Spec(
+        id="store; nargs=?; args=no; default=no, config_default=yes",
+        config_args={"nargs": "?"},
+        config_parser_args={"config_default": "e"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected="e",
+    ),
+    Spec(
+        id="store; nargs=?; args=yes1; default=no, config_default=yes",
+        config_args={"nargs": "?"},
+        config_parser_args={"config_default": "e"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected="v",
+    ),
+    Spec(
+        id=(
+            "store; nargs=?; args=yes0; default=no, const=yes, "
+            "config_default=yes"
+        ),
+        config_args={"nargs": "?", "const": "c"},
+        config_parser_args={"config_default": "e"},
+        dict_source=None,
+        argparse_source="--c",
+        expected="c",
+    ),
+]
+test_specs.extend(store_nargs_q_test_specs)
+
+store_nargs_s_test_specs = [
+    Spec(
+        id="store, nargs=* with const (invalid const)",
+        config_args={"nargs": "*", "const": []},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+    Spec(
+        id="store, nargs=*, args=no, default=no",
+        config_args={"nargs": "*"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="store, nargs=*, args=yes0_1, default=no",
+        config_args={"nargs": "*"},
+        dict_source=[],
+        argparse_source="--c",
+        expected=[],
+    ),
+    Spec(
+        id="store, nargs=*, args=yes0_2, default=no",
+        config_args={"nargs": "*"},
+        dict_source=None,
+        argparse_source=OMIT_TEST_FOR_SOURCE,
+        expected=[],
+    ),
+    Spec(
+        id="store, nargs=*, args=yes1, default=no",
+        config_args={"nargs": "*"},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+    Spec(
+        id="store, nargs=*, args=yes2, default=no",
+        config_args={"nargs": "*"},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=["v", "w"],
+    ),
+    Spec(
+        id="store, nargs=*, args=no, default=yes",
+        config_args={"nargs": "*", "default": ["d"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="store, nargs=*, args=yes0_1, default=yes",
+        config_args={"nargs": "*", "default": ["d"]},
+        dict_source=[],
+        argparse_source="--c",
+        expected=[],
+    ),
+    Spec(
+        id="store, nargs=*, args=yes0_2, default=yes",
+        config_args={"nargs": "*", "default": ["d"]},
+        dict_source=None,
+        argparse_source=OMIT_TEST_FOR_SOURCE,
+        expected=[],
+    ),
+    Spec(
+        id="store, nargs=*, args=yes1, default=yes",
+        config_args={"nargs": "*", "default": ["d"]},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+    Spec(
+        id="store; nargs=*; args=no; default=yes, config_default=yes",
+        config_args={"nargs": "*", "default": ["d", "e"]},
+        config_parser_args={"config_default": ["f", "g"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d", "e"],
+    ),
+    Spec(
+        id="store; nargs=*; args=no; default=no, config_default=yes",
+        config_args={"nargs": "*"},
+        config_parser_args={"config_default": ["f", "g"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["f", "g"],
+    ),
+    Spec(
+        id="store; nargs=*; args=yes; default=no, config_default=yes",
+        config_args={"nargs": "*"},
+        config_parser_args={"config_default": ["f", "g"]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=["v", "w"],
+    ),
+]
+test_specs.extend(store_nargs_s_test_specs)
+
+store_nargs_p_test_specs = [
+    Spec(
+        id="store, nargs=+ with const (invalid const)",
+        config_args={"nargs": "+", "const": ["c"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+    Spec(
+        id="store, nargs=+, args=no, default=no",
+        config_args={"nargs": "+"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="store, nargs=+, args=invalid0_1, default=no",
+        config_args={"nargs": "+"},
+        dict_source=[],
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="store, nargs=+, args=invalid0_2, default=no",
+        config_args={"nargs": "+"},
+        dict_source=None,
+        argparse_source=OMIT_TEST_FOR_SOURCE,
+        expected=Exception,
+    ),
+    Spec(
+        id="store, nargs=+, args=yes1, default=no",
+        config_args={"nargs": "+"},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+    Spec(
+        id="store, nargs=+, args=yes2, default=no",
+        config_args={"nargs": "+"},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=["v", "w"],
+    ),
+    Spec(
+        id="store, nargs=+, args=no, default=yes",
+        config_args={"nargs": "+", "default": ["d"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="store, nargs=+, args=yes1, default=yes",
+        config_args={"nargs": "+", "default": ["d"]},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+    Spec(
+        id="store; nargs=+; args=no; default=yes, config_default=yes",
+        config_args={"nargs": "+", "default": ["d", "e"]},
+        config_parser_args={"config_default": ["f", "g"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d", "e"],
+    ),
+    Spec(
+        id="store; nargs=+; args=no; default=no, config_default=yes",
+        config_args={"nargs": "+"},
+        config_parser_args={"config_default": ["f", "g"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["f", "g"],
+    ),
+    Spec(
+        id="store; nargs=+; args=yes; default=no, config_default=yes",
+        config_args={"nargs": "+"},
+        config_parser_args={"config_default": ["f", "g"]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=["v", "w"],
+    ),
+]
+test_specs.extend(store_nargs_p_test_specs)
 
 
-@pytest.mark.parametrize("spec", nargs_test_specs)
-def test_nargs(spec):
+append_nargs_0_test_specs = [
+    Spec(
+        id="append; nargs=0 (invalid nargs)",
+        config_args={"action": "append", "nargs": 0},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+]
+test_specs.extend(append_nargs_0_test_specs)
+
+append_nargs_none_test_specs = [
+    Spec(
+        id="append; nargs=no with const (invalid const)",
+        config_args={"action": "append", "const": 1},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=no; args=no; default=no",
+        config_args={"action": "append"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="append; nargs=no; args=invalid0; default=no",
+        config_args={"action": "append"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=no; args=invalid2; default=no",
+        config_args={"action": "append"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v w",
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=no; args=no; default=yes",
+        config_args={"action": "append", "default": ["d"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="append; nargs=no; args=yes_1; default=no",
+        config_args={"action": "append"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+    Spec(
+        id="append; nargs=no; args=yes_2; default=no",
+        config_args={"action": "append"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=["v", "w"],
+    ),
+    Spec(
+        id="append; nargs=no; args=yes_1; default=yes",
+        config_args={"action": "append", "default": ["d"]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["d", "v"],
+    ),
+    Spec(
+        id="append; nargs=no; args=yes_2; default=yes",
+        config_args={"action": "append", "default": ["d"]},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=["d", "v", "w"],
+    ),
+    Spec(
+        id="append; nargs=no; args=no; default=yes, config_default=yes",
+        config_args={"action": "append", "default": ["d"]},
+        config_parser_args={"config_default": ["e"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="append; nargs=no; args=no; default=no, config_default=yes",
+        config_args={"action": "append"},
+        config_parser_args={"config_default": ["e"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["e"],
+    ),
+    Spec(
+        id="append; nargs=no; args=yes; default=no, config_default=yes",
+        config_args={"action": "append"},
+        config_parser_args={"config_default": ["e"]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["e", "v"],
+    ),
+    Spec(
+        id="append; nargs=no; args=yes; default=yes, config_default=yes",
+        config_args={"action": "append", "default": ["d"]},
+        config_parser_args={"config_default": ["e"]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["d", "v"],
+    ),
+]
+test_specs.extend(append_nargs_none_test_specs)
+
+append_nargs_1_test_specs = [
+    Spec(
+        id="append; nargs=1 with const (invalid const)",
+        config_args={"action": "append", "nargs": 1, "const": 1},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=1; args=no; default=no",
+        config_args={"action": "append", "nargs": 1},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="append; nargs=1; args=invalid0; default=no",
+        config_args={"action": "append", "nargs": 1},
+        dict_source=None,
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=1; args=invalid2; default=no",
+        config_args={"action": "append", "nargs": 1},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v w",
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=1; args=no; default=yes",
+        config_args={"action": "append", "nargs": 1, "default": ["d"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="append; nargs=1; args=yes_1; default=no",
+        config_args={"action": "append", "nargs": 1},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=[["v"]],
+    ),
+    Spec(
+        id="append; nargs=1; args=yes_2; default=no",
+        config_args={"action": "append", "nargs": 1},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=[["v"], ["w"]],
+    ),
+    Spec(
+        id="append; nargs=1; args=yes_1; default=yes",
+        config_args={"action": "append", "nargs": 1, "default": [["d"]]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=[["d"], ["v"]],
+    ),
+    Spec(
+        id="append; nargs=1; args=yes_2; default=yes",
+        config_args={"action": "append", "nargs": 1, "default": [["d"]]},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=[["d"], ["v"], ["w"]],
+    ),
+    Spec(
+        id="append; nargs=1; args=no; default=yes, config_default=yes",
+        config_args={"action": "append", "nargs": 1, "default": [["d"]]},
+        config_parser_args={"config_default": [["e"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["d"]],
+    ),
+    Spec(
+        id="append; nargs=1; args=no; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": 1},
+        config_parser_args={"config_default": [["e"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["e"]],
+    ),
+    Spec(
+        id="append; nargs=1; args=yes; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": 1},
+        config_parser_args={"config_default": [["e"]]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=[["e"], ["v"]],
+    ),
+    Spec(
+        id="append; nargs=1; args=yes; default=yes, config_default=yes",
+        config_args={"action": "append", "nargs": 1, "default": [["d"]]},
+        config_parser_args={"config_default": [["e"]]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=[["d"], ["v"]],
+    ),
+]
+test_specs.extend(append_nargs_1_test_specs)
+
+append_nargs_2_test_specs = [
+    Spec(
+        id="append; nargs=2 with const (invalid const)",
+        config_args={"action": "append", "nargs": 2, "const": 1},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=2; args=no; default=no",
+        config_args={"action": "append", "nargs": 2},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="append; nargs=2, args=invalid0; default=no",
+        config_args={"action": "append", "nargs": 2},
+        dict_source=None,
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=2, args=invalid1; default=no",
+        config_args={"action": "append", "nargs": 2},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=2, args=yes; default=no",
+        config_args={"action": "append", "nargs": 2},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["v", "w"]],
+    ),
+    Spec(
+        id="append; nargs=2; args=no; default=yes",
+        config_args={"action": "append", "nargs": 2, "default": [["d", "e"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["d", "e"]],
+    ),
+    Spec(
+        id="append; nargs=2, args=yes, default=yes",
+        config_args={"action": "append", "nargs": 2, "default": [["d", "e"]]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["d", "e"], ["v", "w"]],
+    ),
+    Spec(
+        id="append; nargs=2; args=no; default=yes, config_default=yes",
+        config_args={"action": "append", "nargs": 2, "default": [["d", "e"]]},
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["d", "e"]],
+    ),
+    Spec(
+        id="append; nargs=2; args=no; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": 2},
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["f", "g"]],
+    ),
+    Spec(
+        id="append; nargs=2; args=yes; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": 2},
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["f", "g"], ["v", "w"]],
+    ),
+    Spec(
+        id="append; nargs=2; args=yes; default=yes, config_default=yes",
+        config_args={"action": "append", "nargs": 2, "default": [["d", "e"]]},
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["d", "e"], ["v", "w"]],
+    ),
+]
+test_specs.extend(append_nargs_2_test_specs)
+
+append_nargs_q_test_specs = [
+    Spec(
+        id="append; nargs=?, args=no, default=no, const=no",
+        config_args={"action": "append", "nargs": "?"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="append; nargs=?, args=yes0, default=no, const=no",
+        config_args={"action": "append", "nargs": "?"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=[None],
+    ),
+    Spec(
+        id="append; nargs=?, args=yes0_2, default=no, const=no",
+        config_args={"action": "append", "nargs": "?"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c --c",
+        expected=[None, None],
+    ),
+    Spec(
+        id="append; nargs=?, args=invalid2, default=no, const=no",
+        config_args={"action": "append", "nargs": "?"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v w",
+        expected=Exception,
+    ),
+    Spec(
+        id="append; nargs=?, args=yes1_1, default=no, const=no",
+        config_args={"action": "append", "nargs": "?"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+    Spec(
+        id="append; nargs=?, args=yes1_2, default=no, const=no",
+        config_args={"action": "append", "nargs": "?"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=["v", "w"],
+    ),
+    Spec(
+        id="append; nargs=?, args=no, default=yes, const=no",
+        config_args={"action": "append", "nargs": "?", "default": ["d"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes0_1, default=yes, const=no",
+        config_args={"action": "append", "nargs": "?", "default": ["d"]},
+        dict_source=None,
+        argparse_source="--c",
+        expected=["d", None],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes0_2, default=yes, const=no",
+        config_args={"action": "append", "nargs": "?", "default": ["d"]},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c --c",
+        expected=["d", None, None],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes1_1, default=yes, const=no",
+        config_args={"action": "append", "nargs": "?", "default": ["d"]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["d", "v"],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes1_2, default=yes, const=no",
+        config_args={"action": "append", "nargs": "?", "default": ["d"]},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=["d", "v", "w"],
+    ),
+    Spec(
+        id="append, nargs=?, args=no, default=no, const=yes",
+        config_args={"action": "append", "nargs": "?", "const": "c"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="append, nargs=?, args=yes0_1, default=no, const=yes",
+        config_args={"action": "append", "nargs": "?", "const": "c"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=["c"],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes0_2, default=no, const=yes",
+        config_args={"action": "append", "nargs": "?", "const": "c"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c --c",
+        expected=["c", "c"],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes1_1, default=no, const=yes",
+        config_args={"action": "append", "nargs": "?", "const": "c"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["v"],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes1_2, default=no, const=yes",
+        config_args={"action": "append", "nargs": "?", "const": "c"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=["v", "w"],
+    ),
+    Spec(
+        id="append, nargs=?, args=no, default=yes, const=yes",
+        config_args={
+            "action": "append",
+            "nargs": "?",
+            "const": "c",
+            "default": ["d"],
+        },
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes0_1, default=yes, const=yes",
+        config_args={
+            "action": "append",
+            "nargs": "?",
+            "const": "c",
+            "default": ["d"],
+        },
+        dict_source=None,
+        argparse_source="--c",
+        expected=["d", "c"],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes0_2, default=yes, const=yes",
+        config_args={
+            "action": "append",
+            "nargs": "?",
+            "const": "c",
+            "default": ["d"],
+        },
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c --c",
+        expected=["d", "c", "c"],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes1_1, default=yes, const=yes",
+        config_args={
+            "action": "append",
+            "nargs": "?",
+            "const": "c",
+            "default": ["d"],
+        },
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["d", "v"],
+    ),
+    Spec(
+        id="append, nargs=?, args=yes1_2, default=yes, const=yes",
+        config_args={
+            "action": "append",
+            "nargs": "?",
+            "const": "c",
+            "default": ["d"],
+        },
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=["d", "v", "w"],
+    ),
+    Spec(
+        id="append; nargs=?; args=no; default=yes, config_default=yes",
+        config_args={"action": "append", "nargs": "?", "default": ["d"]},
+        config_parser_args={"config_default": ["e"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["d"],
+    ),
+    Spec(
+        id="append; nargs=?; args=no; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": "?"},
+        config_parser_args={"config_default": ["e"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=["e"],
+    ),
+    Spec(
+        id="append; nargs=?; args=yes1; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": "?"},
+        config_parser_args={"config_default": ["e"]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["e", "v"],
+    ),
+    Spec(
+        id="append; nargs=?; args=yes1; default=yes, config_default=yes",
+        config_args={"action": "append", "nargs": "?", "default": ["d"]},
+        config_parser_args={"config_default": ["e"]},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=["d", "v"],
+    ),
+    Spec(
+        id=(
+            "append; nargs=?; args=yes0; default=no, const=yes, "
+            "config_default=yes"
+        ),
+        config_args={"action": "append", "nargs": "?", "const": "c"},
+        config_parser_args={"config_default": ["e"]},
+        dict_source=None,
+        argparse_source="--c",
+        expected=["e", "c"],
+    ),
+]
+test_specs.extend(append_nargs_q_test_specs)
+
+append_nargs_s_test_specs = [
+    Spec(
+        id="append, nargs=* with const (invalid const)",
+        config_args={"action": "append", "nargs": "*", "const": []},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+    Spec(
+        id="append, nargs=*, args=no, default=no",
+        config_args={"action": "append", "nargs": "*"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="append, nargs=*, args=yes0a_1, default=no",
+        config_args={"action": "append", "nargs": "*"},
+        dict_source=[],
+        argparse_source="--c",
+        expected=[[]],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes0a_2, default=no",
+        config_args={"action": "append", "nargs": "*"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c --c",
+        expected=[[], []],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes0b_1, default=no",
+        config_args={"action": "append", "nargs": "*"},
+        dict_source=None,
+        argparse_source=OMIT_TEST_FOR_SOURCE,
+        expected=[[]],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes1_1, default=no",
+        config_args={"action": "append", "nargs": "*"},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=[["v"]],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes1_2, default=no",
+        config_args={"action": "append", "nargs": "*"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=[["v"], ["w"]],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes2_1, default=no",
+        config_args={"action": "append", "nargs": "*"},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["v", "w"]],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes_mixed, default=no",
+        config_args={"action": "append", "nargs": "*"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w x",
+        expected=[["v"], ["w", "x"]],
+    ),
+    Spec(
+        id="append, nargs=*, args=no, default=yes",
+        config_args={"action": "append", "nargs": "*", "default": [["d"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["d"]],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes0a_1, default=yes",
+        config_args={"action": "append", "nargs": "*", "default": [["d"]]},
+        dict_source=[],
+        argparse_source="--c",
+        expected=[["d"], []],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes0a_2, default=yes",
+        config_args={"action": "append", "nargs": "*", "default": [["d"]]},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c --c",
+        expected=[["d"], [], []],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes1_1, default=yes",
+        config_args={"action": "append", "nargs": "*", "default": [["d"]]},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=[["d"], ["v"]],
+    ),
+    Spec(
+        id="append, nargs=*, args=yes1_2, default=yes",
+        config_args={"action": "append", "nargs": "*", "default": [["d"]]},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=[["d"], ["v"], ["w"]],
+    ),
+    Spec(
+        id="append; nargs=*; args=no; default=yes, config_default=yes",
+        config_args={
+            "action": "append",
+            "nargs": "*",
+            "default": [["d", "e"]],
+        },
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["d", "e"]],
+    ),
+    Spec(
+        id="append; nargs=*; args=no; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": "*"},
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["f", "g"]],
+    ),
+    Spec(
+        id="append; nargs=*; args=yes; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": "*"},
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["f", "g"], ["v", "w"]],
+    ),
+    Spec(
+        id="append; nargs=*; args=yes; default=yes, config_default=yes",
+        config_args={
+            "action": "append",
+            "nargs": "*",
+            "default": [["d", "e"]],
+        },
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["d", "e"], ["v", "w"]],
+    ),
+]
+test_specs.extend(append_nargs_s_test_specs)
+
+append_nargs_p_test_specs = [
+    Spec(
+        id="append, nargs=+ with const (invalid const)",
+        config_args={"action": "append", "nargs": "+", "const": ["c"]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=Exception,
+    ),
+    Spec(
+        id="append, nargs=+, args=no, default=no",
+        config_args={"action": "append", "nargs": "+"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=None,
+    ),
+    Spec(
+        id="append, nargs=+, args=invalid0a_1, default=no",
+        config_args={"action": "append", "nargs": "+"},
+        dict_source=[],
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="append, nargs=+, args=invalid0b_1, default=no",
+        config_args={"action": "append", "nargs": "+"},
+        dict_source=None,
+        argparse_source=OMIT_TEST_FOR_SOURCE,
+        expected=Exception,
+    ),
+    Spec(
+        id="append, nargs=+, args=yes1_1, default=no",
+        config_args={"action": "append", "nargs": "+"},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=[["v"]],
+    ),
+    Spec(
+        id="append, nargs=+, args=yes1_2, default=no",
+        config_args={"action": "append", "nargs": "+"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w",
+        expected=[["v"], ["w"]],
+    ),
+    Spec(
+        id="append, nargs=+, args=yes2_1, default=no",
+        config_args={"action": "append", "nargs": "+"},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["v", "w"]],
+    ),
+    Spec(
+        id="append, nargs=+, args=yes_mixed, default=no",
+        config_args={"action": "append", "nargs": "+"},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w x",
+        expected=[["v"], ["w", "x"]],
+    ),
+    Spec(
+        id="append, nargs=+, args=no, default=yes",
+        config_args={"action": "append", "nargs": "+", "default": [["d"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["d"]],
+    ),
+    Spec(
+        id="append, nargs=+, args=yes1_1, default=yes",
+        config_args={"action": "append", "nargs": "+", "default": [["d"]]},
+        dict_source=["v"],
+        argparse_source="--c v",
+        expected=[["d"], ["v"]],
+    ),
+    Spec(
+        id="append, nargs=+, args=yes_mixed, default=yes",
+        config_args={"action": "append", "nargs": "+", "default": [["d"]]},
+        dict_source=OMIT_TEST_FOR_SOURCE,
+        argparse_source="--c v --c w x",
+        expected=[["d"], ["v"], ["w", "x"]],
+    ),
+    Spec(
+        id="append; nargs=+; args=no; default=yes, config_default=yes",
+        config_args={
+            "action": "append",
+            "nargs": "+",
+            "default": [["d", "e"]],
+        },
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["d", "e"]],
+    ),
+    Spec(
+        id="append; nargs=+; args=no; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": "+"},
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=mc.NONE,
+        argparse_source="",
+        test_without_source=True,
+        expected=[["f", "g"]],
+    ),
+    Spec(
+        id="append; nargs=+; args=yes; default=no, config_default=yes",
+        config_args={"action": "append", "nargs": "+"},
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["f", "g"], ["v", "w"]],
+    ),
+    Spec(
+        id="append; nargs=+; args=yes; default=yes, config_default=yes",
+        config_args={
+            "action": "append",
+            "nargs": "+",
+            "default": [["d", "e"]],
+        },
+        config_parser_args={"config_default": [["f", "g"]]},
+        dict_source=["v", "w"],
+        argparse_source="--c v w",
+        expected=[["d", "e"], ["v", "w"]],
+    ),
+]
+test_specs.extend(append_nargs_p_test_specs)
+
+
+@pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
+def test_spec(spec):
     if spec.expected is Exception:
-        with pytest.raises(Exception):
-            _test_nargs_with_dict(spec)
-        with pytest.raises(Exception):
-            _test_nargs_with_argparse(spec)
+        if spec.dict_source is not OMIT_TEST_FOR_SOURCE:
+            with pytest.raises(Exception):
+                _test_spec_with_dict(spec)
+            with pytest.raises(Exception):
+                _test_spec_with_json(spec)
+        if spec.argparse_source is not OMIT_TEST_FOR_SOURCE:
+            with pytest.raises(Exception):
+                _test_spec_with_argparse(spec)
     else:
-        _test_nargs_with_dict(spec)
-        _test_nargs_with_argparse(spec)
+        if spec.dict_source is not OMIT_TEST_FOR_SOURCE:
+            _test_spec_with_dict(spec)
+            _test_spec_with_json(spec)
+        if spec.argparse_source is not OMIT_TEST_FOR_SOURCE:
+            _test_spec_with_argparse(spec)
 
 
-def _test_nargs_with_dict(spec):
-    mc_parser = mc.ConfigParser()
+def _test_spec_with_dict(spec):
+    mc_parser = mc.ConfigParser(**spec.config_parser_args)
     mc_parser.add_config("c", **spec.config_args)
     dict_source = {}
     if spec.dict_source is not mc.NONE:
@@ -636,8 +1848,23 @@ def _test_nargs_with_dict(spec):
         assert getattr(values, "c") == spec.expected
 
 
-def _test_nargs_with_argparse(spec):
-    mc_parser = mc.ConfigParser()
+def _test_spec_with_json(spec):
+    mc_parser = mc.ConfigParser(**spec.config_parser_args)
+    mc_parser.add_config("c", **spec.config_args)
+    dict_source = {}
+    if spec.dict_source is not mc.NONE:
+        dict_source["c"] = spec.dict_source
+    fileobj = io.StringIO(json.dumps(dict_source))
+    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
+    values = mc_parser.parse_config()
+    if spec.expected is mc.NONE:
+        assert not hasattr(values, "c")
+    else:
+        assert getattr(values, "c") == spec.expected
+
+
+def _test_spec_with_argparse(spec):
+    mc_parser = mc.ConfigParser(**spec.config_parser_args)
     mc_parser.add_config("c", **spec.config_args)
     mc_parser.add_source(
         mc.SimpleArgparseSource, argument_parser_class=RaisingArgumentParser
@@ -1034,11 +2261,11 @@ def test_multiple_sources():
         "c1": 1,
         "c2": "v2a",
         "c9": 2,
-        "c10": true
+        "c10": null
     }"""
     )
     mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
-    mc_parser.add_source(mc.DictSource, {"c9": 3, "c10": 99})
+    mc_parser.add_source(mc.DictSource, {"c9": 3, "c10": None})
     mc_parser.add_source(mc.SimpleArgparseSource)
     with utm.patch.object(
         sys, "argv", "prog --c5 v5 --c7 [1,2] --c9 4 --c10 --c10".split()

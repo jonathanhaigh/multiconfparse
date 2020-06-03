@@ -69,6 +69,20 @@ class InvalidNumberOfValuesError(ParseError):
         )
 
 
+class InvalidValueForNargs0Error(ParseError):
+    """
+    Exception raised when a value recieved for a config item with nargs=0 is
+    not a "none" value.
+    """
+
+    def __init__(self, value, none_values):
+        none_values_str = ", ".join((str(v) for v in none_values))
+        super().__init__(
+            f"invalid value '{str(value)}' for config item with nargs=0; "
+            f"valid values: ({none_values_str})"
+        )
+
+
 # ------------------------------------------------------------------------------
 # Tags
 # ------------------------------------------------------------------------------
@@ -76,7 +90,7 @@ class InvalidNumberOfValuesError(ParseError):
 
 class _SuppressAttributeCreation:
     def __str__(self):
-        return "==SUPPRESS=="
+        return "SUPPRESS"
 
     __repr__ = __str__
 
@@ -86,7 +100,7 @@ SUPPRESS = _SuppressAttributeCreation()
 
 class _None:
     def __str__(self):
-        return "==NONE=="
+        return "NONE"
 
     __repr__ = __str__
 
@@ -96,7 +110,7 @@ NONE = _None()
 
 class _PresentWithoutValue:
     def __str__(self):
-        return "==PRESENT_WITHOUT_VALUE=="
+        return "PRESENT_WITHOUT_VALUE"
 
     __repr__ = __str__
 
@@ -156,19 +170,28 @@ class DictSource(Source):
     config_parser.add_source(multiconfig.DictSource, {"some": "dict"})
     """
 
-    def __init__(self, config_specs, d):
+    def __init__(
+        self, config_specs, d, none_values=[None, PRESENT_WITHOUT_VALUE]
+    ):
         self._config_specs = config_specs
         self._dict = d
+        self._none_values = none_values
 
     def parse_config(self):
         ns = Namespace()
         for spec in self._config_specs:
             if spec.name not in self._dict:
                 continue
-            if spec.nargs == 0:
+            value = self._dict[spec.name]
+            if spec.nargs == ZERO_OR_ONE and value in self._none_values:
                 value = PRESENT_WITHOUT_VALUE
-            else:
-                value = self._dict[spec.name]
+            if spec.nargs == ZERO_OR_MORE and value in self._none_values:
+                if value in self._none_values:
+                    value = []
+            if spec.nargs == 0:
+                if value not in self._none_values:
+                    raise InvalidValueForNargs0Error(value, self._none_values)
+                value = PRESENT_WITHOUT_VALUE
             setattr(ns, spec.name, [value])
         return ns
 
@@ -296,7 +319,14 @@ class JsonSource(Source):
     Note: exactly one of the 'path' and 'fileobj' options must be given.
     """
 
-    def __init__(self, config_specs, path=None, fileobj=None):
+    def __init__(
+        self,
+        config_specs,
+        path=None,
+        fileobj=None,
+        none_values=[],
+        json_none_values=["null"],
+    ):
         """
         Don't call this directly, use ConfigParser.add_source() instead.
         """
@@ -305,8 +335,13 @@ class JsonSource(Source):
                 "JsonSource's 'path' and 'fileobj' options were both "
                 "specified but only one is expected"
             )
-        json = self._get_json(path, fileobj)
-        self._dict_source = DictSource(config_specs, json)
+        d = self._get_json(path, fileobj)
+        self._dict_source = DictSource(
+            config_specs,
+            d,
+            none_values=[json.loads(v) for v in json_none_values]
+            + none_values,
+        )
 
     def parse_config(self):
         """
@@ -524,9 +559,12 @@ class _StoreConfigSpec(_ConfigSpecWithChoices):
         assert new is not NONE
         return new
 
-    def apply_default(self, value):
-        if value is NONE and self.default is not NONE:
-            return self.default
+    def apply_default(self, value, global_default):
+        default = self.default
+        if default is NONE:
+            default = global_default
+        if value is NONE:
+            return default
         if self.nargs == ZERO_OR_ONE and value is PRESENT_WITHOUT_VALUE:
             return self.const
         return value
@@ -566,11 +604,14 @@ class _StoreConstConfigSpec(_ConfigSpec):
         assert new is PRESENT_WITHOUT_VALUE
         return PRESENT_WITHOUT_VALUE
 
-    def apply_default(self, value):
+    def apply_default(self, value, global_default):
+        default = self.default
+        if default is NONE:
+            default = global_default
         if value is PRESENT_WITHOUT_VALUE:
             return self.const
         assert value is NONE
-        return self.default
+        return default
 
 
 class _StoreTrueConfigSpec(_StoreConstConfigSpec):
@@ -610,16 +651,19 @@ class _AppendConfigSpec(_ConfigSpecWithChoices):
             return [new]
         return current + [new]
 
-    def apply_default(self, value):
+    def apply_default(self, value, global_default):
+        default = self.default
+        if default is NONE:
+            default = global_default
         if value is NONE:
-            return self.default
+            return default
         if self.nargs == ZERO_OR_ONE:
             const = None
             if self.const is not NONE:
                 const = self.const
             value = [const if v is PRESENT_WITHOUT_VALUE else v for v in value]
-        if self.default is not NONE:
-            return self.default + value
+        if default is not NONE and default is not SUPPRESS:
+            return default + value
         return value
 
     def _set_nargs(self, nargs):
@@ -656,12 +700,15 @@ class _CountConfigSpec(_ConfigSpec):
             return 1
         return current + 1
 
-    def apply_default(self, value):
-        if self.default is NONE:
-            return value
+    def apply_default(self, value, global_default):
+        default = self.default
+        if default is NONE:
+            default = global_default
         if value is NONE:
-            return self.default
-        return self.default + value
+            return default
+        if default is not NONE and default is not SUPPRESS:
+            return default + value
+        return value
 
 
 class _ExtendConfigSpec(_ConfigSpecWithChoices):
@@ -681,16 +728,19 @@ class _ExtendConfigSpec(_ConfigSpecWithChoices):
             return new
         return current + new
 
-    def apply_default(self, value):
+    def apply_default(self, value, global_default):
+        default = self.default
+        if default is NONE:
+            default = global_default
         if value is NONE:
-            return self.default
-        if self.default is NONE:
-            return value
-        return self.default + value
+            return default
+        if default is not NONE and default is not SUPPRESS:
+            return default + value
+        return value
 
 
 class ConfigParser:
-    def __init__(self, config_default=None):
+    def __init__(self, config_default=NONE):
         """
         Create a ConfigParser object.
 
@@ -758,13 +808,15 @@ class ConfigParser:
     def _get_configs_with_defaults(self):
         values = copy.copy(self._parsed_values)
         for spec in self._config_specs:
-            value = spec.apply_default(_getattr_or_none(values, spec.name))
-            if value is not NONE:
-                setattr(values, spec.name, value)
-            elif self._global_default is NONE:
+            value = spec.apply_default(
+                _getattr_or_none(values, spec.name), self._global_default
+            )
+            if value is SUPPRESS:
+                continue
+            elif value is NONE:
                 setattr(values, spec.name, None)
-            elif self._global_default is not SUPPRESS:
-                setattr(values, spec.name, self._global_default)
+            else:
+                setattr(values, spec.name, value)
         return values
 
     def _check_required_configs(self):
