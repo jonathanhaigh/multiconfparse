@@ -560,11 +560,8 @@ class _StoreConfigSpec(_ConfigSpecWithChoices):
         return new
 
     def apply_default(self, value, global_default):
-        default = self.default
-        if default is NONE:
-            default = global_default
         if value is NONE:
-            return default
+            return self.default
         if self.nargs == ZERO_OR_ONE and value is PRESENT_WITHOUT_VALUE:
             return self.const
         return value
@@ -605,13 +602,10 @@ class _StoreConstConfigSpec(_ConfigSpec):
         return PRESENT_WITHOUT_VALUE
 
     def apply_default(self, value, global_default):
-        default = self.default
-        if default is NONE:
-            default = global_default
         if value is PRESENT_WITHOUT_VALUE:
             return self.const
         assert value is NONE
-        return default
+        return self.default
 
 
 class _StoreTrueConfigSpec(_StoreConstConfigSpec):
@@ -652,18 +646,15 @@ class _AppendConfigSpec(_ConfigSpecWithChoices):
         return current + [new]
 
     def apply_default(self, value, global_default):
-        default = self.default
-        if default is NONE:
-            default = global_default
         if value is NONE:
-            return default
+            return self.default
         if self.nargs == ZERO_OR_ONE:
             const = None
             if self.const is not NONE:
                 const = self.const
             value = [const if v is PRESENT_WITHOUT_VALUE else v for v in value]
-        if default is not NONE and default is not SUPPRESS:
-            return default + value
+        if self.default is not NONE and self.default is not SUPPRESS:
+            return self.default + value
         return value
 
     def _set_nargs(self, nargs):
@@ -701,13 +692,10 @@ class _CountConfigSpec(_ConfigSpec):
         return current + 1
 
     def apply_default(self, value, global_default):
-        default = self.default
-        if default is NONE:
-            default = global_default
         if value is NONE:
-            return default
-        if default is not NONE and default is not SUPPRESS:
-            return default + value
+            return self.default
+        if self.default is not NONE and self.default is not SUPPRESS:
+            return self.default + value
         return value
 
 
@@ -729,13 +717,10 @@ class _ExtendConfigSpec(_ConfigSpecWithChoices):
         return current + new
 
     def apply_default(self, value, global_default):
-        default = self.default
-        if default is NONE:
-            default = global_default
         if value is NONE:
-            return default
-        if default is not NONE and default is not SUPPRESS:
-            return default + value
+            return self.default
+        if self.default is not NONE and self.default is not SUPPRESS:
+            return self.default + value
         return value
 
 
@@ -761,6 +746,8 @@ class ConfigParser:
         """
         Add a config item to this ConfigParser.
         """
+        if "default" not in kwargs and self._global_default is not NONE:
+            kwargs["default"] = self._global_default
         spec = _ConfigSpec.create(name=name, **kwargs)
         self._config_specs.append(spec)
         return spec

@@ -7,6 +7,7 @@ from multiconfig import multiconfig as mc
 
 import argparse
 import io
+import itertools
 import json
 import pathlib
 import pytest
@@ -45,15 +46,6 @@ class RaisingArgumentParser(argparse.ArgumentParser):
 # ------------------------------------------------------------------------------
 # ConfigParser tests
 # ------------------------------------------------------------------------------
-
-
-def test_suppress():
-    mc_parser = mc.ConfigParser(config_default=mc.SUPPRESS)
-    mc_parser.add_config("c1")
-    mc_parser.add_config("c2", default="v2")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c2": "v2"})
-    assert values == expected_values
 
 
 def test_required_config_not_found():
@@ -415,7 +407,7 @@ test_specs = []
 store_nargs_none_test_specs = [
     Spec(
         id="store; nargs=no with const (invalid const)",
-        config_args={"const": 1},
+        config_args={"action": "store", "const": 1},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -423,7 +415,7 @@ store_nargs_none_test_specs = [
     ),
     Spec(
         id="store; nargs=no; args=no; default=no",
-        config_args={},
+        config_args={"action": "store"},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -431,28 +423,28 @@ store_nargs_none_test_specs = [
     ),
     Spec(
         id="store; nargs=no; args=invalid0; default=no",
-        config_args={},
+        config_args={"action": "store"},
         dict_source=None,
         argparse_source="--c",
         expected=Exception,
     ),
     Spec(
         id="store; nargs=no; args=invalid2; default=no",
-        config_args={},
+        config_args={"action": "store"},
         dict_source=OMIT_TEST_FOR_SOURCE,
         argparse_source="--c v w",
         expected=Exception,
     ),
     Spec(
         id="store; nargs=no; args=yes; default=no",
-        config_args={},
+        config_args={"action": "store"},
         dict_source="v",
         argparse_source="--c v",
         expected="v",
     ),
     Spec(
         id="store; nargs=no; args=no; default=yes",
-        config_args={"default": "d"},
+        config_args={"action": "store", "default": "d"},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -460,14 +452,14 @@ store_nargs_none_test_specs = [
     ),
     Spec(
         id="store; nargs=no; args=yes; default=yes",
-        config_args={"default": "d"},
+        config_args={"action": "store", "default": "d"},
         dict_source="v",
         argparse_source="--c v",
         expected="v",
     ),
     Spec(
         id="store; nargs=no; args=no; default=yes, config_default=yes",
-        config_args={"default": "d"},
+        config_args={"action": "store", "default": "d"},
         config_parser_args={"config_default": "e"},
         dict_source=mc.NONE,
         argparse_source="",
@@ -476,7 +468,7 @@ store_nargs_none_test_specs = [
     ),
     Spec(
         id="store; nargs=no; args=no; default=no, config_default=yes",
-        config_args={},
+        config_args={"action": "store"},
         config_parser_args={"config_default": "e"},
         dict_source=mc.NONE,
         argparse_source="",
@@ -485,7 +477,7 @@ store_nargs_none_test_specs = [
     ),
     Spec(
         id="store; nargs=no; args=yes; default=no, config_default=yes",
-        config_args={},
+        config_args={"action": "store"},
         config_parser_args={"config_default": "e"},
         dict_source="v",
         argparse_source="--c v",
@@ -497,7 +489,7 @@ test_specs.extend(store_nargs_none_test_specs)
 store_nargs_0_test_specs = [
     Spec(
         id="store; nargs=0 (invalid nargs)",
-        config_args={"nargs": 0},
+        config_args={"action": "store", "nargs": 0},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -509,7 +501,7 @@ test_specs.extend(store_nargs_0_test_specs)
 store_nargs_1_test_specs = [
     Spec(
         id="store; nargs=1 with const (invalid const)",
-        config_args={"nargs": 1, "const": 1},
+        config_args={"action": "store", "nargs": 1, "const": 1},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -517,7 +509,7 @@ store_nargs_1_test_specs = [
     ),
     Spec(
         id="store; nargs=1; args=no; default=no",
-        config_args={"nargs": 1},
+        config_args={"action": "store", "nargs": 1},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -525,28 +517,28 @@ store_nargs_1_test_specs = [
     ),
     Spec(
         id="store; nargs=1; args=invalid0; default=no",
-        config_args={"nargs": 1},
+        config_args={"action": "store", "nargs": 1},
         dict_source=None,
         argparse_source="--c",
         expected=Exception,
     ),
     Spec(
         id="store; nargs=1; args=invalid2; default=no",
-        config_args={"nargs": 1},
+        config_args={"action": "store", "nargs": 1},
         dict_source=OMIT_TEST_FOR_SOURCE,
         argparse_source="--c v w",
         expected=Exception,
     ),
     Spec(
         id="store; nargs=1; args=yes; default=no",
-        config_args={"nargs": 1},
+        config_args={"action": "store", "nargs": 1},
         dict_source="v",
         argparse_source="--c v",
         expected=["v"],
     ),
     Spec(
         id="store; nargs=1; args=no; default=yes",
-        config_args={"nargs": 1, "default": ["d"]},
+        config_args={"action": "store", "nargs": 1, "default": ["d"]},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -554,14 +546,14 @@ store_nargs_1_test_specs = [
     ),
     Spec(
         id="store; nargs=1; args=yes; default=yes",
-        config_args={"nargs": 1, "default": ["d"]},
+        config_args={"action": "store", "nargs": 1, "default": ["d"]},
         dict_source="v",
         argparse_source="--c v",
         expected=["v"],
     ),
     Spec(
         id="store; nargs=1; args=no; default=yes, config_default=yes",
-        config_args={"nargs": 1, "default": ["d"]},
+        config_args={"action": "store", "nargs": 1, "default": ["d"]},
         config_parser_args={"config_default": ["e"]},
         dict_source=mc.NONE,
         argparse_source="",
@@ -570,7 +562,7 @@ store_nargs_1_test_specs = [
     ),
     Spec(
         id="store; nargs=1; args=no; default=no, config_default=yes",
-        config_args={"nargs": 1},
+        config_args={"action": "store", "nargs": 1},
         config_parser_args={"config_default": ["e"]},
         dict_source=mc.NONE,
         argparse_source="",
@@ -579,7 +571,7 @@ store_nargs_1_test_specs = [
     ),
     Spec(
         id="store; nargs=1; args=yes; default=no, config_default=yes",
-        config_args={"nargs": 1},
+        config_args={"action": "store", "nargs": 1},
         config_parser_args={"config_default": ["e"]},
         dict_source="v",
         argparse_source="--c v",
@@ -591,7 +583,7 @@ test_specs.extend(store_nargs_1_test_specs)
 store_nargs_2_test_specs = [
     Spec(
         id="store; nargs=2 with const (invalid const)",
-        config_args={"nargs": 2, "const": 1},
+        config_args={"action": "store", "nargs": 2, "const": 1},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -599,7 +591,7 @@ store_nargs_2_test_specs = [
     ),
     Spec(
         id="store; nargs=2; args=no; default=no",
-        config_args={"nargs": 2},
+        config_args={"action": "store", "nargs": 2},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -607,28 +599,28 @@ store_nargs_2_test_specs = [
     ),
     Spec(
         id="store; nargs=2, args=invalid0; default=no",
-        config_args={"nargs": 2},
+        config_args={"action": "store", "nargs": 2},
         dict_source=None,
         argparse_source="--c",
         expected=Exception,
     ),
     Spec(
         id="store; nargs=2, args=invalid1; default=no",
-        config_args={"nargs": 2},
+        config_args={"action": "store", "nargs": 2},
         dict_source=["v"],
         argparse_source="--c v",
         expected=Exception,
     ),
     Spec(
         id="store; nargs=2, args=yes; default=no",
-        config_args={"nargs": 2},
+        config_args={"action": "store", "nargs": 2},
         dict_source=["v", "w"],
         argparse_source="--c v w",
         expected=["v", "w"],
     ),
     Spec(
         id="store; nargs=2; args=no; default=yes",
-        config_args={"nargs": 2, "default": ["d", "e"]},
+        config_args={"action": "store", "nargs": 2, "default": ["d", "e"]},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -636,14 +628,14 @@ store_nargs_2_test_specs = [
     ),
     Spec(
         id="store; nargs=2, args=yes, default=yes",
-        config_args={"nargs": 2, "default": ["d", "e"]},
+        config_args={"action": "store", "nargs": 2, "default": ["d", "e"]},
         dict_source=["v", "w"],
         argparse_source="--c v w",
         expected=["v", "w"],
     ),
     Spec(
         id="store; nargs=2; args=no; default=yes, config_default=yes",
-        config_args={"nargs": 2, "default": ["d", "e"]},
+        config_args={"action": "store", "nargs": 2, "default": ["d", "e"]},
         config_parser_args={"config_default": ["f", "g"]},
         dict_source=mc.NONE,
         argparse_source="",
@@ -652,7 +644,7 @@ store_nargs_2_test_specs = [
     ),
     Spec(
         id="store; nargs=2; args=no; default=no, config_default=yes",
-        config_args={"nargs": 2},
+        config_args={"action": "store", "nargs": 2},
         config_parser_args={"config_default": ["f", "g"]},
         dict_source=mc.NONE,
         argparse_source="",
@@ -661,7 +653,7 @@ store_nargs_2_test_specs = [
     ),
     Spec(
         id="store; nargs=2; args=yes; default=no, config_default=yes",
-        config_args={"nargs": 2},
+        config_args={"action": "store", "nargs": 2},
         config_parser_args={"config_default": ["f", "g"]},
         dict_source=["v", "w"],
         argparse_source="--c v w",
@@ -673,7 +665,7 @@ test_specs.extend(store_nargs_2_test_specs)
 store_nargs_q_test_specs = [
     Spec(
         id="store; nargs=?, args=no, default=no, const=no",
-        config_args={"nargs": "?"},
+        config_args={"action": "store", "nargs": "?"},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -681,35 +673,35 @@ store_nargs_q_test_specs = [
     ),
     Spec(
         id="store; nargs=?, args=invalid2, default=no, const=no",
-        config_args={"nargs": "?"},
+        config_args={"action": "store", "nargs": "?"},
         dict_source=OMIT_TEST_FOR_SOURCE,
         argparse_source="--c --c",
         expected=Exception,
     ),
     Spec(
         id="store; nargs=?, args=yes0, default=no, const=no",
-        config_args={"nargs": "?"},
+        config_args={"action": "store", "nargs": "?"},
         dict_source=None,
         argparse_source="--c",
         expected=None,
     ),
     Spec(
         id="store; nargs=?, args=invalid2, default=no, const=no",
-        config_args={"nargs": "?"},
+        config_args={"action": "store", "nargs": "?"},
         dict_source=OMIT_TEST_FOR_SOURCE,
         argparse_source="--c v w",
         expected=Exception,
     ),
     Spec(
         id="store; nargs=?, args=yes1, default=no, const=no",
-        config_args={"nargs": "?"},
+        config_args={"action": "store", "nargs": "?"},
         dict_source="v",
         argparse_source="--c v",
         expected="v",
     ),
     Spec(
         id="store; nargs=?, args=no, default=yes, const=no",
-        config_args={"nargs": "?", "default": "d"},
+        config_args={"action": "store", "nargs": "?", "default": "d"},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -717,21 +709,21 @@ store_nargs_q_test_specs = [
     ),
     Spec(
         id="store, nargs=?, args=yes0, default=yes, const=no",
-        config_args={"nargs": "?", "default": "d"},
+        config_args={"action": "store", "nargs": "?", "default": "d"},
         dict_source=None,
         argparse_source="--c",
         expected=None,
     ),
     Spec(
         id="store, nargs=?, args=yes1, default=yes, const=no",
-        config_args={"nargs": "?", "default": "d"},
+        config_args={"action": "store", "nargs": "?", "default": "d"},
         dict_source="v",
         argparse_source="--c v",
         expected="v",
     ),
     Spec(
         id="store, nargs=?, args=no, default=no, const=yes",
-        config_args={"nargs": "?", "const": "c"},
+        config_args={"action": "store", "nargs": "?", "const": "c"},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -739,21 +731,26 @@ store_nargs_q_test_specs = [
     ),
     Spec(
         id="store, nargs=?, args=yes0, default=no, const=yes",
-        config_args={"nargs": "?", "const": "c"},
+        config_args={"action": "store", "nargs": "?", "const": "c"},
         dict_source=None,
         argparse_source="--c",
         expected="c",
     ),
     Spec(
         id="store, nargs=?, args=yes1, default=no, const=yes",
-        config_args={"nargs": "?", "const": "c"},
+        config_args={"action": "store", "nargs": "?", "const": "c"},
         dict_source="v",
         argparse_source="--c v",
         expected="v",
     ),
     Spec(
         id="store, nargs=?, args=no, default=yes, const=yes",
-        config_args={"nargs": "?", "const": "c", "default": "d"},
+        config_args={
+            "action": "store",
+            "nargs": "?",
+            "const": "c",
+            "default": "d",
+        },
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -761,21 +758,31 @@ store_nargs_q_test_specs = [
     ),
     Spec(
         id="store, nargs=?, args=yes0, default=yes, const=yes",
-        config_args={"nargs": "?", "const": "c", "default": "d"},
+        config_args={
+            "action": "store",
+            "nargs": "?",
+            "const": "c",
+            "default": "d",
+        },
         dict_source=None,
         argparse_source="--c",
         expected="c",
     ),
     Spec(
         id="store, nargs=?, args=yes1, default=yes, const=yes",
-        config_args={"nargs": "?", "const": "c", "default": "d"},
+        config_args={
+            "action": "store",
+            "nargs": "?",
+            "const": "c",
+            "default": "d",
+        },
         dict_source="v",
         argparse_source="--c v",
         expected="v",
     ),
     Spec(
         id="store; nargs=?; args=no; default=yes, config_default=yes",
-        config_args={"nargs": "?", "default": "d"},
+        config_args={"action": "store", "nargs": "?", "default": "d"},
         config_parser_args={"config_default": "e"},
         dict_source=mc.NONE,
         argparse_source="",
@@ -784,7 +791,7 @@ store_nargs_q_test_specs = [
     ),
     Spec(
         id="store; nargs=?; args=no; default=no, config_default=yes",
-        config_args={"nargs": "?"},
+        config_args={"action": "store", "nargs": "?"},
         config_parser_args={"config_default": "e"},
         dict_source=mc.NONE,
         argparse_source="",
@@ -793,7 +800,7 @@ store_nargs_q_test_specs = [
     ),
     Spec(
         id="store; nargs=?; args=yes1; default=no, config_default=yes",
-        config_args={"nargs": "?"},
+        config_args={"action": "store", "nargs": "?"},
         config_parser_args={"config_default": "e"},
         dict_source="v",
         argparse_source="--c v",
@@ -804,7 +811,7 @@ store_nargs_q_test_specs = [
             "store; nargs=?; args=yes0; default=no, const=yes, "
             "config_default=yes"
         ),
-        config_args={"nargs": "?", "const": "c"},
+        config_args={"action": "store", "nargs": "?", "const": "c"},
         config_parser_args={"config_default": "e"},
         dict_source=None,
         argparse_source="--c",
@@ -816,7 +823,7 @@ test_specs.extend(store_nargs_q_test_specs)
 store_nargs_s_test_specs = [
     Spec(
         id="store, nargs=* with const (invalid const)",
-        config_args={"nargs": "*", "const": []},
+        config_args={"action": "store", "nargs": "*", "const": []},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -824,7 +831,7 @@ store_nargs_s_test_specs = [
     ),
     Spec(
         id="store, nargs=*, args=no, default=no",
-        config_args={"nargs": "*"},
+        config_args={"action": "store", "nargs": "*"},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -832,35 +839,35 @@ store_nargs_s_test_specs = [
     ),
     Spec(
         id="store, nargs=*, args=yes0_1, default=no",
-        config_args={"nargs": "*"},
+        config_args={"action": "store", "nargs": "*"},
         dict_source=[],
         argparse_source="--c",
         expected=[],
     ),
     Spec(
         id="store, nargs=*, args=yes0_2, default=no",
-        config_args={"nargs": "*"},
+        config_args={"action": "store", "nargs": "*"},
         dict_source=None,
         argparse_source=OMIT_TEST_FOR_SOURCE,
         expected=[],
     ),
     Spec(
         id="store, nargs=*, args=yes1, default=no",
-        config_args={"nargs": "*"},
+        config_args={"action": "store", "nargs": "*"},
         dict_source=["v"],
         argparse_source="--c v",
         expected=["v"],
     ),
     Spec(
         id="store, nargs=*, args=yes2, default=no",
-        config_args={"nargs": "*"},
+        config_args={"action": "store", "nargs": "*"},
         dict_source=["v", "w"],
         argparse_source="--c v w",
         expected=["v", "w"],
     ),
     Spec(
         id="store, nargs=*, args=no, default=yes",
-        config_args={"nargs": "*", "default": ["d"]},
+        config_args={"action": "store", "nargs": "*", "default": ["d"]},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -868,28 +875,28 @@ store_nargs_s_test_specs = [
     ),
     Spec(
         id="store, nargs=*, args=yes0_1, default=yes",
-        config_args={"nargs": "*", "default": ["d"]},
+        config_args={"action": "store", "nargs": "*", "default": ["d"]},
         dict_source=[],
         argparse_source="--c",
         expected=[],
     ),
     Spec(
         id="store, nargs=*, args=yes0_2, default=yes",
-        config_args={"nargs": "*", "default": ["d"]},
+        config_args={"action": "store", "nargs": "*", "default": ["d"]},
         dict_source=None,
         argparse_source=OMIT_TEST_FOR_SOURCE,
         expected=[],
     ),
     Spec(
         id="store, nargs=*, args=yes1, default=yes",
-        config_args={"nargs": "*", "default": ["d"]},
+        config_args={"action": "store", "nargs": "*", "default": ["d"]},
         dict_source=["v"],
         argparse_source="--c v",
         expected=["v"],
     ),
     Spec(
         id="store; nargs=*; args=no; default=yes, config_default=yes",
-        config_args={"nargs": "*", "default": ["d", "e"]},
+        config_args={"action": "store", "nargs": "*", "default": ["d", "e"]},
         config_parser_args={"config_default": ["f", "g"]},
         dict_source=mc.NONE,
         argparse_source="",
@@ -898,7 +905,7 @@ store_nargs_s_test_specs = [
     ),
     Spec(
         id="store; nargs=*; args=no; default=no, config_default=yes",
-        config_args={"nargs": "*"},
+        config_args={"action": "store", "nargs": "*"},
         config_parser_args={"config_default": ["f", "g"]},
         dict_source=mc.NONE,
         argparse_source="",
@@ -907,7 +914,7 @@ store_nargs_s_test_specs = [
     ),
     Spec(
         id="store; nargs=*; args=yes; default=no, config_default=yes",
-        config_args={"nargs": "*"},
+        config_args={"action": "store", "nargs": "*"},
         config_parser_args={"config_default": ["f", "g"]},
         dict_source=["v", "w"],
         argparse_source="--c v w",
@@ -919,7 +926,7 @@ test_specs.extend(store_nargs_s_test_specs)
 store_nargs_p_test_specs = [
     Spec(
         id="store, nargs=+ with const (invalid const)",
-        config_args={"nargs": "+", "const": ["c"]},
+        config_args={"action": "store", "nargs": "+", "const": ["c"]},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -927,7 +934,7 @@ store_nargs_p_test_specs = [
     ),
     Spec(
         id="store, nargs=+, args=no, default=no",
-        config_args={"nargs": "+"},
+        config_args={"action": "store", "nargs": "+"},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -935,35 +942,35 @@ store_nargs_p_test_specs = [
     ),
     Spec(
         id="store, nargs=+, args=invalid0_1, default=no",
-        config_args={"nargs": "+"},
+        config_args={"action": "store", "nargs": "+"},
         dict_source=[],
         argparse_source="--c",
         expected=Exception,
     ),
     Spec(
         id="store, nargs=+, args=invalid0_2, default=no",
-        config_args={"nargs": "+"},
+        config_args={"action": "store", "nargs": "+"},
         dict_source=None,
         argparse_source=OMIT_TEST_FOR_SOURCE,
         expected=Exception,
     ),
     Spec(
         id="store, nargs=+, args=yes1, default=no",
-        config_args={"nargs": "+"},
+        config_args={"action": "store", "nargs": "+"},
         dict_source=["v"],
         argparse_source="--c v",
         expected=["v"],
     ),
     Spec(
         id="store, nargs=+, args=yes2, default=no",
-        config_args={"nargs": "+"},
+        config_args={"action": "store", "nargs": "+"},
         dict_source=["v", "w"],
         argparse_source="--c v w",
         expected=["v", "w"],
     ),
     Spec(
         id="store, nargs=+, args=no, default=yes",
-        config_args={"nargs": "+", "default": ["d"]},
+        config_args={"action": "store", "nargs": "+", "default": ["d"]},
         dict_source=mc.NONE,
         argparse_source="",
         test_without_source=True,
@@ -971,14 +978,14 @@ store_nargs_p_test_specs = [
     ),
     Spec(
         id="store, nargs=+, args=yes1, default=yes",
-        config_args={"nargs": "+", "default": ["d"]},
+        config_args={"action": "store", "nargs": "+", "default": ["d"]},
         dict_source=["v"],
         argparse_source="--c v",
         expected=["v"],
     ),
     Spec(
         id="store; nargs=+; args=no; default=yes, config_default=yes",
-        config_args={"nargs": "+", "default": ["d", "e"]},
+        config_args={"action": "store", "nargs": "+", "default": ["d", "e"]},
         config_parser_args={"config_default": ["f", "g"]},
         dict_source=mc.NONE,
         argparse_source="",
@@ -987,7 +994,7 @@ store_nargs_p_test_specs = [
     ),
     Spec(
         id="store; nargs=+; args=no; default=no, config_default=yes",
-        config_args={"nargs": "+"},
+        config_args={"action": "store", "nargs": "+"},
         config_parser_args={"config_default": ["f", "g"]},
         dict_source=mc.NONE,
         argparse_source="",
@@ -996,7 +1003,7 @@ store_nargs_p_test_specs = [
     ),
     Spec(
         id="store; nargs=+; args=yes; default=no, config_default=yes",
-        config_args={"nargs": "+"},
+        config_args={"action": "store", "nargs": "+"},
         config_parser_args={"config_default": ["f", "g"]},
         dict_source=["v", "w"],
         argparse_source="--c v w",
@@ -1813,6 +1820,52 @@ append_nargs_p_test_specs = [
     ),
 ]
 test_specs.extend(append_nargs_p_test_specs)
+
+
+nargs_not0_actions = ("store", "append")
+nargs_none_actions = ("extend", "store_true", "count")
+nargs_none_with_const_actions = ("store_const",)
+for action, nargs, const in itertools.chain(
+    itertools.product(
+        nargs_not0_actions, (mc.NONE, 1, 2, "?", "*", "+"), (mc.NONE,),
+    ),
+    ((a, mc.NONE, mc.NONE) for a in nargs_none_actions),
+    ((a, mc.NONE, "c") for a in nargs_none_with_const_actions),
+):
+    extra_config_args = {}
+    if nargs is not mc.NONE:
+        extra_config_args["nargs"] = nargs
+    if const is not mc.NONE:
+        extra_config_args["const"] = const
+
+    test_specs.append(
+        Spec(
+            id=f"{action}; nargs={nargs}; args=no; default=suppress",
+            config_args={
+                "action": action,
+                "default": mc.SUPPRESS,
+                **extra_config_args,
+            },
+            dict_source=mc.NONE,
+            argparse_source="",
+            test_without_source=True,
+            expected=mc.NONE,
+        )
+    )
+    test_specs.append(
+        Spec(
+            id=(
+                f"{action}; nargs={nargs}; args=no; default=none; "
+                "config_default=suppress"
+            ),
+            config_args={"action": action, **extra_config_args},
+            config_parser_args={"config_default": mc.SUPPRESS},
+            dict_source=mc.NONE,
+            argparse_source="",
+            test_without_source=True,
+            expected=mc.NONE,
+        )
+    )
 
 
 @pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
