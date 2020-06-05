@@ -15,6 +15,8 @@ import sys
 import tempfile
 import unittest.mock as utm
 
+VALID_CONFIG_NAMES = ("c1", "c_", "C", "_c")
+INVALID_CONFIG_NAMES = ("-c", "c-", "1c")
 TEST_FILE_PATH = pathlib.Path(__file__).resolve().parent / "testfile.txt"
 with TEST_FILE_PATH.open() as f:
     TEST_FILE_CONTENT = f.read()
@@ -125,10 +127,17 @@ def test_file_opening():
         values.c2.write(TEST_FILE_CONTENT)
 
 
-def test_validate_name():
+@pytest.mark.parametrize("name", VALID_CONFIG_NAMES)
+def test_valid_name(name):
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config(name)
+
+
+@pytest.mark.parametrize("name", INVALID_CONFIG_NAMES)
+def test_invalid_name(name):
     mc_parser = mc.ConfigParser()
     with pytest.raises(ValueError):
-        mc_parser.add_config("--c1")
+        mc_parser.add_config(name)
 
 
 def test_validate_type():

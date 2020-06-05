@@ -467,7 +467,9 @@ class _ConfigSpec(abc.ABC):
         """
 
     def _set_name(self, name):
-        if re.match(r"[^0-9A-Za-z_]", name) or re.match(r"^[^a-zA-Z_]", name):
+        if re.search(r"[^0-9A-Za-z_]", name) or re.search(
+            r"^[^a-zA-Z_]", name
+        ):
             raise ValueError(
                 f"invalid config name '{name}', "
                 "must be a valid Python identifier"
