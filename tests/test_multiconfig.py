@@ -17,6 +17,23 @@ import unittest.mock as utm
 
 VALID_CONFIG_NAMES = ("c1", "c_", "C", "_c")
 INVALID_CONFIG_NAMES = ("-c", "c-", "1c")
+NUMBERS = {
+    "normal": tuple(range(1, 11)),
+    "invalid": tuple(range(11, 21)),
+    "default": tuple(range(21, 31)),
+    "global_default": tuple(range(31, 41)),
+    "const": tuple(range(41, 51)),
+}
+ACTIONS = (
+    "store",
+    "append",
+    "store_const",
+    "store_true",
+    "store_false",
+    "count",
+    "extend",
+)
+TYPES = (int, str, pathlib.Path)
 TEST_FILE_PATH = pathlib.Path(__file__).resolve().parent / "testfile.txt"
 with TEST_FILE_PATH.open() as f:
     TEST_FILE_CONTENT = f.read()
@@ -26,12 +43,99 @@ with TEST_FILE_PATH.open() as f:
 # ------------------------------------------------------------------------------
 
 
+def get_scalar_values(category, type):
+    if type is int:
+        return NUMBERS[category]
+    if type is str:
+        return [f"str{i}" for i in NUMBERS[category]]
+    if type is pathlib.Path:
+        return [pathlib.Path(f"/path/{i}") for i in NUMBERS[category]]
+
+
+def get_value(category, type, nargs, index=0):
+    assert index < 5
+    if nargs in ("*", "+"):
+        return get_value(category, type, 2, index)
+    if nargs == 0:
+        return None
+    svals = get_scalar_values(category, type)
+    if nargs is mc.NONE or nargs == "?":
+        return svals[0 + index]
+    assert isinstance(nargs, int)
+    return list(svals[index * nargs : (index + 1) * nargs])
+
+
+def to_parse_config_return_value(action, value):
+    if action in ("append", "extend"):
+        return [value]
+    return value
+
+
+def get_dict_value(category, type, nargs, index=0):
+    return get_value(category, type, nargs, index)
+
+
+def get_argparse_value(category, type, nargs, index=0):
+    if nargs in ("*", "+"):
+        return get_argparse_value(category, type, 2, index)
+    if nargs == 0:
+        return "--c"
+    value = get_value(category, type, nargs, index)
+    if nargs is mc.NONE or nargs == "?":
+        return f"--c {str(value)}"
+    assert isinstance(nargs, int)
+    return f"--c {' '.join([str(v) for v in value[:nargs]])}"
+
+
+def get_default_value(category, action, type, nargs, index=0):
+    return to_parse_config_return_value(
+        get_value(category, type, nargs, index)
+    )
+
+
+def get_const_value(category, type, index=0):
+    return get_value(category, type, mc.NONE, index)
+
+
+def get_parse_return_value(action, category, type, nargs, index=0):
+    value = get_value(category, type, nargs, index)
+    if action == "append":
+        return [value]
+    if action == "extend":
+        if isinstance(value, list):
+            return value
+        return [value]
+    return value
+
+
+def get_choices(type):
+    return get_scalar_values("normal", type)
+
+
+def get_default_nargs_for_action(action):
+    if action in ("store", "append"):
+        return mc.NONE
+    if action in ("store_const", "store_true", "store_false", "count"):
+        return 0
+    assert action == "extend"
+    return "*"
+
+
+def get_all_nargs_for_action(action):
+    if action in ("store_const", "store_true", "store_false", "count"):
+        return (0,)
+    if action in ("store", "append"):
+        return (mc.NONE, 1, 2, "?", "*", "+")
+    assert action == "extend"
+    return "*"
+
+
 def split_str(s):
     return s.split()
 
 
 # ------------------------------------------------------------------------------
-# Helper functions
+# Helper classes
 # ------------------------------------------------------------------------------
 
 
@@ -45,27 +149,16 @@ class RaisingArgumentParser(argparse.ArgumentParser):
             raise ArgparseError(message)
 
 
+class JsonEncoderWithPath(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, pathlib.Path):
+            return str(o)
+        return super().default(o)
+
+
 # ------------------------------------------------------------------------------
 # ConfigParser tests
 # ------------------------------------------------------------------------------
-
-
-def test_required_config_not_found():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2")
-    with pytest.raises(mc.RequiredConfigNotFoundError):
-        mc_parser.parse_config()
-
-
-def test_required_config_found():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2")
-    mc_parser.add_source(mc.DictSource, {"c1": "v1"})
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1", "c2": None})
-    assert values == expected_values
 
 
 def test_partially_parse_config():
@@ -144,186 +237,6 @@ def test_validate_type():
     mc_parser = mc.ConfigParser()
     with pytest.raises(TypeError):
         mc_parser.add_config("c1", type=1)
-
-
-def test_valid_str_choice():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", choices=["a", "b"])
-    mc_parser.add_source(mc.DictSource, {"c1": "a"})
-    expected_values = mc._namespace_from_dict({"c1": "a"})
-    values = mc_parser.parse_config()
-    assert values == expected_values
-
-
-def test_valid_int_choice():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", type=int, choices=[1, 2])
-    mc_parser.add_source(mc.DictSource, {"c1": "2"})
-    expected_values = mc._namespace_from_dict({"c1": 2})
-    values = mc_parser.parse_config()
-    assert values == expected_values
-
-
-def test_invalid_str_choice():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", choices=["a", "b"])
-    with pytest.raises(mc.InvalidChoiceError):
-        mc_parser.add_source(mc.DictSource, {"c1": "c"})
-        mc_parser.parse_config()
-
-
-def test_invalid_int_choice():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", type=int, choices=[1, 2])
-    with pytest.raises(mc.InvalidChoiceError):
-        mc_parser.add_source(mc.DictSource, {"c1": "3"})
-        mc_parser.parse_config()
-
-
-def test_store_const():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_const", const="v1")
-    mc_parser.add_source(mc.DictSource, {"c1": None})
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1"})
-    assert values == expected_values
-
-
-def test_store_const_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_const", const="v1")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": None})
-    assert values == expected_values
-
-
-def test_store_const_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config(
-        "c1", action="store_const", const="v1a", default="v1b"
-    )
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1b"})
-    assert values == expected_values
-
-
-def test_store_true():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_true")
-    mc_parser.add_source(mc.DictSource, {"c1": None})
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": True})
-    assert values == expected_values
-
-
-def test_store_true_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_true")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": False})
-    assert values == expected_values
-
-
-def test_store_true_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_true", default="v1")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1"})
-    assert values == expected_values
-
-
-def test_store_false():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_false")
-    mc_parser.add_source(mc.DictSource, {"c1": None})
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": False})
-    assert values == expected_values
-
-
-def test_store_false_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_false")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": True})
-    assert values == expected_values
-
-
-def test_store_false_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_false", default="v1")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1"})
-    assert values == expected_values
-
-
-def test_append():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append")
-    mc_parser.add_source(mc.DictSource, {"c1": "v1"})
-    mc_parser.add_source(mc.DictSource, {"c1": "v2"})
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": ["v1", "v2"]})
-    assert values == expected_values
-
-
-def test_append_with_choices():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", type=int, choices=[0, 1])
-    mc_parser.add_source(mc.DictSource, {"c1": 0})
-    mc_parser.add_source(mc.DictSource, {"c1": 1})
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": [0, 1]})
-    assert values == expected_values
-
-
-def test_append_with_invalid_choice():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", choices=[0, 1])
-    mc_parser.add_source(mc.DictSource, {"c1": 0})
-    mc_parser.add_source(mc.DictSource, {"c1": 2})
-    with pytest.raises(mc.InvalidChoiceError):
-        mc_parser.parse_config()
-
-
-def test_append_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", type=int, default=[0])
-    mc_parser.add_source(mc.DictSource, {"c1": 1})
-    mc_parser.add_source(mc.DictSource, {"c1": 2})
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": [0, 1, 2]})
-    assert values == expected_values
-
-
-def test_append_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": None})
-    assert values == expected_values
-
-
-def test_append_required_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", required=True)
-    with pytest.raises(mc.RequiredConfigNotFoundError):
-        mc_parser.parse_config()
-
-
-def test_append_required_missing_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", required=True, default=["v0"])
-    with pytest.raises(mc.RequiredConfigNotFoundError):
-        mc_parser.parse_config()
-
-
-def test_append_missing_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", type=int, default=[0])
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": [0]})
-    assert values == expected_values
 
 
 def test_count():
@@ -1830,7 +1743,117 @@ append_nargs_p_test_specs = [
 ]
 test_specs.extend(append_nargs_p_test_specs)
 
+store_const_test_specs = [
+    Spec(
+        id="store_const; args=yes; const=no (missing const)",
+        config_args={"action": "store_const"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="store_const; args=yes",
+        config_args={"action": "store_const", "const": "c"},
+        dict_source=None,
+        argparse_source="--c",
+        expected="c",
+    ),
+    Spec(
+        id="store_const; args=invalid1",
+        config_args={"action": "store_const", "const": "c"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=Exception,
+    ),
+    Spec(
+        id="store_const; args=no; default=yes",
+        config_args={"action": "store_const", "const": "c", "default": "d"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        expected="d",
+    ),
+]
+test_specs.extend(store_const_test_specs)
 
+store_true_test_specs = [
+    Spec(
+        id="store_true; args=yes; const=yes (invalid const)",
+        config_args={"action": "store_true", "const": "v"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="store_true; args=no",
+        config_args={"action": "store_true"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        expected=False,
+    ),
+    Spec(
+        id="store_true; args=yes",
+        config_args={"action": "store_true"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=True,
+    ),
+    Spec(
+        id="store_true; args=invalid1",
+        config_args={"action": "store_true"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=Exception,
+    ),
+    Spec(
+        id="store_true; args=no; default=yes",
+        config_args={"action": "store_true", "default": "d"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        expected="d",
+    ),
+]
+test_specs.extend(store_true_test_specs)
+
+store_false_test_specs = [
+    Spec(
+        id="store_false; args=yes; const=yes (invalid const)",
+        config_args={"action": "store_false", "const": "v"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=Exception,
+    ),
+    Spec(
+        id="store_false; args=no",
+        config_args={"action": "store_false"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        expected=True,
+    ),
+    Spec(
+        id="store_false; args=yes",
+        config_args={"action": "store_false"},
+        dict_source=None,
+        argparse_source="--c",
+        expected=False,
+    ),
+    Spec(
+        id="store_false; args=invalid1",
+        config_args={"action": "store_false"},
+        dict_source="v",
+        argparse_source="--c v",
+        expected=Exception,
+    ),
+    Spec(
+        id="store_false; args=no; default=yes",
+        config_args={"action": "store_false", "default": "d"},
+        dict_source=mc.NONE,
+        argparse_source="",
+        expected="d",
+    ),
+]
+test_specs.extend(store_false_test_specs)
+
+suppress_test_specs = []
 nargs_not0_actions = ("store", "append")
 nargs_none_actions = ("extend", "store_true", "count")
 nargs_none_with_const_actions = ("store_const",)
@@ -1847,7 +1870,7 @@ for action, nargs, const in itertools.chain(
     if const is not mc.NONE:
         extra_config_args["const"] = const
 
-    test_specs.append(
+    suppress_test_specs.append(
         Spec(
             id=f"{action}; nargs={nargs}; args=no; default=suppress",
             config_args={
@@ -1861,7 +1884,7 @@ for action, nargs, const in itertools.chain(
             expected=mc.NONE,
         )
     )
-    test_specs.append(
+    suppress_test_specs.append(
         Spec(
             id=(
                 f"{action}; nargs={nargs}; args=no; default=none; "
@@ -1875,6 +1898,86 @@ for action, nargs, const in itertools.chain(
             expected=mc.NONE,
         )
     )
+test_specs.extend(suppress_test_specs)
+
+required_test_specs = []
+for action, type in itertools.product(("store", "append", "extend"), TYPES):
+    nargs = get_default_nargs_for_action(action)
+    dict_value = get_dict_value("normal", type, nargs)
+    argparse_value = get_argparse_value("normal", type, nargs)
+    expected = get_parse_return_value(action, "normal", type, nargs)
+
+    required_test_specs.append(
+        Spec(
+            id=(
+                f"{action}; nargs=no; args=yes; type={type.__name__}; "
+                f"required=yes, default=no"
+            ),
+            config_args={"action": action, "required": True, "type": type},
+            dict_source=dict_value,
+            argparse_source=argparse_value,
+            expected=expected,
+        ),
+    )
+    required_test_specs.append(
+        Spec(
+            id=(
+                f"{action}; nargs=no; args=no; type={type.__name__}; "
+                f"required=yes, default=yes"
+            ),
+            config_args={
+                "action": action,
+                "required": True,
+                "default": expected,
+                "type": type,
+            },
+            dict_source=mc.NONE,
+            argparse_source="",
+            test_without_source=True,
+            expected=Exception,
+        ),
+    )
+    required_test_specs.append(
+        Spec(
+            id=f"{action}; nargs=no; args=no; required=yes",
+            config_args={"action": action, "required": True, "type": type},
+            dict_source=mc.NONE,
+            argparse_source="",
+            test_without_source=True,
+            expected=Exception,
+        ),
+    )
+test_specs.extend(required_test_specs)
+
+
+choices_test_specs = []
+for action, type, index, category in itertools.product(
+    (a for a in ACTIONS if get_default_nargs_for_action(a) != 0),
+    TYPES,
+    (0, 1),
+    ("normal", "invalid"),
+):
+    nargs = get_default_nargs_for_action(action)
+    choices = get_choices(type)
+    dict_value = get_dict_value(category, type, nargs, index)
+    argparse_value = get_argparse_value(category, type, nargs, index)
+    if category == "invalid":
+        expected = Exception
+    else:
+        expected = get_parse_return_value(action, category, type, nargs, index)
+    choices_test_specs.append(
+        Spec(
+            id=(
+                f"{action}; nargs=no; args=yes; type={type.__name__} "
+                f"choices={choices} choice={category}{index}"
+            ),
+            config_args={"action": action, "choices": choices, "type": type},
+            dict_source=dict_value,
+            argparse_source=argparse_value,
+            expected=expected,
+        )
+    )
+test_specs.extend(choices_test_specs)
 
 
 @pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
@@ -1916,7 +2019,7 @@ def _test_spec_with_json(spec):
     dict_source = {}
     if spec.dict_source is not mc.NONE:
         dict_source["c"] = spec.dict_source
-    fileobj = io.StringIO(json.dumps(dict_source))
+    fileobj = io.StringIO(json.dumps(dict_source, cls=JsonEncoderWithPath))
     mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
     values = mc_parser.parse_config()
     if spec.expected is mc.NONE:
@@ -1943,48 +2046,6 @@ def _test_spec_with_argparse(spec):
 # ------------------------------------------------------------------------------
 # SimpleArgparseSource tests
 # ------------------------------------------------------------------------------
-
-
-def test_simple_argparse_source():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2", default="v2")
-    mc_parser.add_config("c3")
-    mc_parser.add_config("c4", default="v4")
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict(
-        {"c1": "v1", "c2": "v2a", "c3": None, "c4": "v4"}
-    )
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_missing_required_config():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1")
-    mc_parser.add_config("c2", default="v2")
-    mc_parser.add_config("c3", required=True)
-    mc_parser.add_config("c4", default="v4")
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
-        with pytest.raises(mc.RequiredConfigNotFoundError):
-            mc_parser.parse_config()
-
-
-def test_simple_argparse_source_with_suppress():
-    mc_parser = mc.ConfigParser(config_default=mc.SUPPRESS)
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2", default="v2")
-    mc_parser.add_config("c3")
-    mc_parser.add_config("c4", default="v4")
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog --c1 v1 --c2 v2a".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict(
-        {"c1": "v1", "c2": "v2a", "c4": "v4"}
-    )
-    assert values == expected_values
 
 
 def test_simple_argparse_source_with_config_added_after_source():
@@ -2015,150 +2076,6 @@ def test_simple_argparse_source_with_prog():
     with utm.patch.object(sys, "argv", "prog --c1 v1".split()):
         with pytest.raises(ArgparseError, match="PROG_TEST"):
             mc_parser.parse_config()
-
-
-def test_simple_argparse_source_with_store_const():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_const", const="v1")
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog --c1".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1"})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_store_const_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_const", const="v1")
-    with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": None})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_store_const_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config(
-        "c1", action="store_const", const="v1a", default="v1b"
-    )
-    with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1b"})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_store_true():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_true")
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog --c1".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": True})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_store_true_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_true")
-    with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": False})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_store_true_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_true", default="v1")
-    with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1"})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_store_false():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_false")
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog --c1".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": False})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_store_false_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_false")
-    with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": True})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_store_false_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="store_false", default="v1")
-    with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": "v1"})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_append():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append")
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog --c1 v1 --c1 v2".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": ["v1", "v2"]})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_append_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", type=int, default=[0])
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog --c1 1 --c1 2".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": [0, 1, 2]})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_append_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append")
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": None})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_append_required_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", required=True)
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog".split()):
-        with pytest.raises(mc.RequiredConfigNotFoundError):
-            mc_parser.parse_config()
-
-
-def test_simple_argparse_source_with_append_required_missing_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", required=True, default=["v0"])
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog".split()):
-        with pytest.raises(mc.RequiredConfigNotFoundError):
-            mc_parser.parse_config()
-
-
-def test_simple_argparse_source_with_append_missing_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="append", type=int, default=[0])
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": [0]})
-    assert values == expected_values
 
 
 def test_simple_argparse_source_with_count():
@@ -2222,63 +2139,6 @@ def test_simple_argparse_source_with_count_missing_with_default():
 # ------------------------------------------------------------------------------
 # JsonSource tests
 # ------------------------------------------------------------------------------
-
-
-def test_json_source():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2", default="v2")
-    mc_parser.add_config("c3")
-    mc_parser.add_config("c4", default="v4")
-    fileobj = io.StringIO(
-        """{
-        "c1": "v1",
-        "c2": "v2a"
-    }"""
-    )
-    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict(
-        {"c1": "v1", "c2": "v2a", "c3": None, "c4": "v4"}
-    )
-    assert values == expected_values
-
-
-def test_json_source_with_missing_required_config():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1")
-    mc_parser.add_config("c2", default="v2")
-    mc_parser.add_config("c3", required=True)
-    mc_parser.add_config("c4", default="v4")
-    fileobj = io.StringIO(
-        """{
-        "c1": "v1",
-        "c2": "v2a"
-    }"""
-    )
-    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
-    with pytest.raises(mc.RequiredConfigNotFoundError):
-        mc_parser.parse_config()
-
-
-def test_json_source_with_suppress():
-    mc_parser = mc.ConfigParser(config_default=mc.SUPPRESS)
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2", default="v2")
-    mc_parser.add_config("c3")
-    mc_parser.add_config("c4", default="v4")
-    fileobj = io.StringIO(
-        """{
-        "c1": "v1",
-        "c2": "v2a"
-    }"""
-    )
-    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict(
-        {"c1": "v1", "c2": "v2a", "c4": "v4"}
-    )
-    assert values == expected_values
 
 
 def test_json_source_with_config_added_after_source():
