@@ -169,6 +169,7 @@ class Spec:
         argparse_source=OMIT_TEST_FOR_SOURCE,
         test_without_source=False,
         config_parser_args=None,
+        test_against_argparse_xfail=None,
     ):
         self.id = id
         self.config_args = config_args
@@ -177,6 +178,7 @@ class Spec:
         self.argparse_source = argparse_source
         self.test_without_source = test_without_source
         self.config_parser_args = config_parser_args or {}
+        self.test_against_argparse_xfail = test_against_argparse_xfail
 
     def __str__(self):
         return str(vars(self))
@@ -351,6 +353,11 @@ for action, nargs, input_nargs, type in (
     expected = get_parse_return_value(
         action, "normal", type, nargs, input_nargs=input_nargs
     )
+    test_against_argparse_xfail = None
+    if action == "extend" and nargs in (None, "?"):
+        test_against_argparse_xfail = (
+            "argparse bug: https://bugs.python.org/issue40365"
+        )
     nargs_test_specs.append(
         Spec(
             id=(
@@ -361,6 +368,7 @@ for action, nargs, input_nargs, type in (
             dict_source=dict_value,
             argparse_source=argparse_value,
             expected=expected,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         )
     )
 
@@ -428,6 +436,11 @@ for action, nargs in itertools.product(
     global_default_expected = get_parse_return_value(
         action, "global_default", type, nargs
     )
+    test_against_argparse_xfail = None
+    if action == "extend" and nargs in (None, "?"):
+        test_against_argparse_xfail = (
+            "argparse bug: https://bugs.python.org/issue40365"
+        )
     nargs_test_specs.append(
         Spec(
             id=(
@@ -443,6 +456,7 @@ for action, nargs in itertools.product(
             dict_source=dict_value,
             argparse_source=argparse_value,
             expected=normal_expected_with_default,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         )
     )
     nargs_test_specs.append(
@@ -474,6 +488,7 @@ for action, nargs in itertools.product(
             dict_source=dict_value,
             argparse_source=argparse_value,
             expected=normal_expected_with_global_default,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         )
     )
     nargs_test_specs.append(
@@ -507,6 +522,7 @@ for action, nargs in itertools.product(
             dict_source=dict_value,
             argparse_source=argparse_value,
             expected=normal_expected_with_default,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         )
     )
     nargs_test_specs.append(
@@ -545,6 +561,11 @@ for action in ("store", "append", "extend"):
     const_expected_with_default = const_expected
     if action in ("append", "extend"):
         const_expected_with_default = default_value + const_expected
+    test_against_argparse_xfail = None
+    if action == "extend":
+        test_against_argparse_xfail = (
+            "argparse bug: https://bugs.python.org/issue40365"
+        )
     nargs_test_specs.append(
         Spec(
             id=(
@@ -578,6 +599,7 @@ for action in ("store", "append", "extend"):
             dict_source=dict_value,
             argparse_source=argparse_value,
             expected=normal_expected,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         )
     )
     nargs_test_specs.append(
@@ -595,6 +617,7 @@ for action in ("store", "append", "extend"):
             dict_source=None,
             argparse_source="--c",
             expected=const_expected,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         )
     )
     nargs_test_specs.append(
@@ -632,6 +655,7 @@ for action in ("store", "append", "extend"):
             dict_source=dict_value,
             argparse_source=argparse_value,
             expected=normal_expected_with_default,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         )
     )
     nargs_test_specs.append(
@@ -650,6 +674,7 @@ for action in ("store", "append", "extend"):
             dict_source=None,
             argparse_source="--c",
             expected=const_expected_with_default,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         )
     )
 test_specs.extend(nargs_test_specs)
@@ -783,7 +808,10 @@ for action, nargs, const in itertools.chain(
 
     suppress_test_specs.append(
         Spec(
-            id=f"{action}; nargs={nargs}; args=no; default=suppress",
+            id=(
+                f"suppress; action={action}; nargs={nargs}; args=no; "
+                f"default=suppress"
+            ),
             config_args={
                 "action": action,
                 "default": mc.SUPPRESS,
@@ -798,8 +826,8 @@ for action, nargs, const in itertools.chain(
     suppress_test_specs.append(
         Spec(
             id=(
-                f"{action}; nargs={nargs}; args=no; default=none; "
-                "config_default=suppress"
+                f"suppress; action={action}; nargs={nargs}; args=no; "
+                f"default=none; config_default=suppress"
             ),
             config_args={"action": action, **extra_config_args},
             config_parser_args={"config_default": mc.SUPPRESS},
@@ -817,24 +845,29 @@ for action, type in itertools.product(("store", "append", "extend"), TYPES):
     dict_value = get_dict_value("normal", type, nargs)
     argparse_value = get_argparse_value("normal", type, nargs)
     expected = get_parse_return_value(action, "normal", type, nargs)
-
+    test_against_argparse_xfail = None
+    if action == "extend":
+        test_against_argparse_xfail = (
+            "argparse bug: https://bugs.python.org/issue40365"
+        )
     required_test_specs.append(
         Spec(
             id=(
-                f"{action}; nargs=no; args=yes; type={type.__name__}; "
-                f"required=yes, default=no"
+                f"required; action={action}; nargs=no; args=yes; "
+                f"type={type.__name__}; required=yes, default=no"
             ),
             config_args={"action": action, "required": True, "type": type},
             dict_source=dict_value,
             argparse_source=argparse_value,
             expected=expected,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         ),
     )
     required_test_specs.append(
         Spec(
             id=(
-                f"{action}; nargs=no; args=no; type={type.__name__}; "
-                f"required=yes, default=yes"
+                f"required; action={action}; nargs=no; args=no; "
+                f"type={type.__name__}; required=yes, default=yes"
             ),
             config_args={
                 "action": action,
@@ -850,7 +883,7 @@ for action, type in itertools.product(("store", "append", "extend"), TYPES):
     )
     required_test_specs.append(
         Spec(
-            id=f"{action}; nargs=no; args=no; required=yes",
+            id=f"required; action={action}; nargs=no; args=no; required=yes",
             config_args={"action": action, "required": True, "type": type},
             dict_source=mc.NONE,
             argparse_source="",
@@ -878,39 +911,38 @@ for action, type, index, category in itertools.product(
         expected = get_parse_return_value(
             action, category, type, nargs, index=index
         )
+    test_against_argparse_xfail = None
+    if action == "extend":
+        test_against_argparse_xfail = (
+            "argparse bug: https://bugs.python.org/issue40365"
+        )
     choices_test_specs.append(
         Spec(
             id=(
-                f"{action}; nargs=no; args=yes; type={type.__name__} "
-                f"choices={choices} choice={category}{index}"
+                f"choices; action={action}; nargs=no; args=yes; "
+                f"type={type.__name__}; choices={choices}; "
+                f"choice={category}{index}"
             ),
             config_args={"action": action, "choices": choices, "type": type},
             dict_source=dict_value,
             argparse_source=argparse_value,
             expected=expected,
+            test_against_argparse_xfail=test_against_argparse_xfail,
         )
     )
 test_specs.extend(choices_test_specs)
 
 
 @pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
-def test_spec(spec):
-    print(f"test_spec(spec={spec})")
+def test_spec_with_dict(spec):
+    if spec.dict_source is OMIT_TEST_FOR_SOURCE:
+        pytest.skip("DictSource does not support this test")
+        return
     if spec.expected is Exception:
-        if spec.dict_source is not OMIT_TEST_FOR_SOURCE:
-            with pytest.raises(Exception):
-                _test_spec_with_dict(spec)
-            with pytest.raises(Exception):
-                _test_spec_with_json(spec)
-        if spec.argparse_source is not OMIT_TEST_FOR_SOURCE:
-            with pytest.raises(Exception):
-                _test_spec_with_argparse(spec)
-    else:
-        if spec.dict_source is not OMIT_TEST_FOR_SOURCE:
+        with pytest.raises(Exception):
             _test_spec_with_dict(spec)
-            _test_spec_with_json(spec)
-        if spec.argparse_source is not OMIT_TEST_FOR_SOURCE:
-            _test_spec_with_argparse(spec)
+    else:
+        _test_spec_with_dict(spec)
 
 
 def _test_spec_with_dict(spec):
@@ -925,6 +957,18 @@ def _test_spec_with_dict(spec):
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
+
+
+@pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
+def test_spec_with_json(spec):
+    if spec.dict_source is OMIT_TEST_FOR_SOURCE:
+        pytest.skip("JsonSource does not support this test")
+        return
+    if spec.expected is Exception:
+        with pytest.raises(Exception):
+            _test_spec_with_json(spec)
+    else:
+        _test_spec_with_json(spec)
 
 
 def _test_spec_with_json(spec):
@@ -942,6 +986,18 @@ def _test_spec_with_json(spec):
         assert getattr(values, "c") == spec.expected
 
 
+@pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
+def test_spec_with_argparse(spec):
+    if spec.argparse_source is OMIT_TEST_FOR_SOURCE:
+        pytest.skip("SimpleArgparseSource does not support this test")
+        return
+    if spec.expected is Exception:
+        with pytest.raises(Exception):
+            _test_spec_with_argparse(spec)
+    else:
+        _test_spec_with_argparse(spec)
+
+
 def _test_spec_with_argparse(spec):
     mc_parser = mc.ConfigParser(**spec.config_parser_args)
     mc_parser.add_config("c", **spec.config_args)
@@ -955,6 +1011,53 @@ def _test_spec_with_argparse(spec):
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
+
+
+@pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
+def test_spec_against_argparse(spec):
+    if spec.test_against_argparse_xfail is not None:
+        pytest.xfail(spec.test_against_argparse_xfail)
+    if spec.argparse_source is OMIT_TEST_FOR_SOURCE:
+        pytest.skip("Argparse does not support this test")
+        return
+    if spec.expected is Exception:
+        with pytest.raises(Exception):
+            _test_spec_against_argparse(spec)
+    else:
+        _test_spec_against_argparse(spec)
+
+
+def _test_spec_against_argparse(spec):
+    # Check that we get the expected results by using argparse directly
+    if (
+        "action" in spec.config_args
+        and spec.config_args["action"] == "extend"
+        and sys.version_info < (3, 8)
+    ):
+        pytest.skip(
+            'Argparse\'s "extend" action is not supported before Python 3.8'
+        )
+    rap_args = {}
+    if "config_default" in spec.config_parser_args:
+        config_default = spec.config_parser_args["config_default"]
+        if config_default is mc.SUPPRESS:
+            rap_args["argument_default"] = argparse.SUPPRESS
+        elif config_default is not mc.NONE:
+            rap_args["argument_default"] = config_default
+
+    if (
+        "default" in spec.config_args
+        and spec.config_args["default"] == mc.SUPPRESS
+    ):
+        spec.config_args["default"] = argparse.SUPPRESS
+
+    ap_parser = RaisingArgumentParser(**rap_args)
+    ap_parser.add_argument("--c", **spec.config_args)
+    ap_values = ap_parser.parse_args(spec.argparse_source.split())
+    if spec.expected is mc.NONE:
+        assert not hasattr(ap_values, "c")
+    else:
+        assert getattr(ap_values, "c") == spec.expected
 
 
 # ------------------------------------------------------------------------------
