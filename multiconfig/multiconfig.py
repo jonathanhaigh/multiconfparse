@@ -52,15 +52,15 @@ class InvalidNumberOfValuesError(ParseError):
     """
 
     def __init__(self, spec, value):
-        assert spec.nargs != ZERO_OR_MORE
+        assert spec.nargs != "*"
         if spec.nargs == 1:
             expecting = "1 value"
         elif isinstance(spec.nargs, int):
             expecting = f"{spec.nargs} values"
-        elif spec.nargs == ZERO_OR_ONE:
+        elif spec.nargs == "?":
             expecting = "up to 1 value"
         else:
-            assert spec.nargs == ONE_OR_MORE
+            assert spec.nargs == "+"
             expecting = "1 or more values"
 
         super().__init__(
@@ -122,10 +122,6 @@ def present_without_value(v):
     return PRESENT_WITHOUT_VALUE
 
 
-ZERO_OR_MORE = "*"
-ONE_OR_MORE = "+"
-ZERO_OR_ONE = "?"
-
 # ------------------------------------------------------------------------------
 # Classes
 # ------------------------------------------------------------------------------
@@ -183,11 +179,15 @@ class DictSource(Source):
             if spec.name not in self._dict:
                 continue
             value = self._dict[spec.name]
-            if spec.nargs == ZERO_OR_ONE and value in self._none_values:
+            if spec.nargs == "?" and value in self._none_values:
                 value = PRESENT_WITHOUT_VALUE
-            if spec.nargs == ZERO_OR_MORE and value in self._none_values:
+            if spec.nargs == "*":
                 if value in self._none_values:
                     value = []
+                elif not isinstance(value, list):
+                    value = [value]
+            if spec.nargs == "+" and not isinstance(value, list):
+                value = [value]
             if spec.nargs == 0:
                 if value not in self._none_values:
                     raise InvalidValueForNargs0Error(value, self._none_values)
@@ -226,10 +226,10 @@ class ArgparseSource(Source):
             else:
                 kwargs["action"] = "append"
 
-            if spec.nargs is not NONE and spec.nargs not in (0, 1):
+            if spec.nargs is not None and spec.nargs not in (0, 1):
                 kwargs["nargs"] = spec.nargs
 
-            if spec.nargs is ZERO_OR_ONE or spec.nargs == 0:
+            if spec.nargs in ("?", 0):
                 kwargs["const"] = PRESENT_WITHOUT_VALUE
 
             argparse_parser.add_argument(arg_name, **kwargs)
@@ -394,10 +394,10 @@ class _ConfigSpec(abc.ABC):
     def __init__(
         self,
         name,
-        nargs=NONE,
+        nargs=None,
         type=str,
         required=False,
-        choices=NONE,
+        choices=None,
         help=None,
     ):
         """
@@ -477,15 +477,7 @@ class _ConfigSpec(abc.ABC):
         self.name = name
 
     def _set_nargs(self, nargs):
-        if nargs is NONE or nargs is None:
-            self.nargs = NONE
-        elif nargs == "*":
-            self.nargs = ZERO_OR_MORE
-        elif nargs == "+":
-            self.nargs = ONE_OR_MORE
-        elif nargs == "?":
-            self.nargs = ZERO_OR_ONE
-        elif isinstance(nargs, int) and nargs >= 0:
+        if nargs is None or nargs in ("*", "+", "?") or isinstance(nargs, int):
             self.nargs = nargs
         else:
             raise ValueError(f"invalid nargs value {nargs}")
@@ -505,11 +497,11 @@ class _ConfigSpec(abc.ABC):
         if self.nargs == 0:
             assert value is PRESENT_WITHOUT_VALUE
             return value
-        if self.nargs is NONE:
+        if self.nargs is None:
             new = self.type(value)
             self._validate_choice(new)
             return new
-        if self.nargs == ZERO_OR_ONE:
+        if self.nargs == "?":
             if value is PRESENT_WITHOUT_VALUE:
                 return value
             else:
@@ -522,14 +514,14 @@ class _ConfigSpec(abc.ABC):
             return new
         new = [self.type(v) for v in value]
         self._validate_choices(new)
-        if self.nargs == ONE_OR_MORE and not new:
+        if self.nargs == "+" and not new:
             raise InvalidNumberOfValuesError(self, new)
         elif isinstance(self.nargs, int) and len(new) != self.nargs:
             raise InvalidNumberOfValuesError(self, new)
         return new
 
     def _validate_choice(self, value):
-        if self.choices is not NONE and value not in self.choices:
+        if self.choices is not None and value not in self.choices:
             raise InvalidChoiceError(self, value)
 
     def _validate_choices(self, values):
@@ -538,7 +530,7 @@ class _ConfigSpec(abc.ABC):
 
 
 class _ConfigSpecWithChoices(_ConfigSpec):
-    def __init__(self, choices=NONE, **kwargs):
+    def __init__(self, choices=None, **kwargs):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
@@ -564,7 +556,7 @@ class _StoreConfigSpec(_ConfigSpecWithChoices):
     def apply_default(self, value, global_default):
         if value is NONE:
             return self.default
-        if self.nargs == ZERO_OR_ONE and value is PRESENT_WITHOUT_VALUE:
+        if self.nargs == "?" and value is PRESENT_WITHOUT_VALUE:
             return self.const
         return value
 
@@ -576,10 +568,10 @@ class _StoreConfigSpec(_ConfigSpecWithChoices):
             )
 
     def _set_const(self, const):
-        if const is not NONE and self.nargs != ZERO_OR_ONE:
+        if const is not NONE and self.nargs != "?":
             raise ValueError(
                 f"const cannot be supplied to the {self.action} action "
-                f"unless nargs is {ZERO_OR_ONE}"
+                f'unless nargs is "?"'
             )
         self.const = const
 
@@ -650,7 +642,7 @@ class _AppendConfigSpec(_ConfigSpecWithChoices):
     def apply_default(self, value, global_default):
         if value is NONE:
             return self.default
-        if self.nargs == ZERO_OR_ONE:
+        if self.nargs == "?":
             const = None
             if self.const is not NONE:
                 const = self.const
@@ -667,10 +659,10 @@ class _AppendConfigSpec(_ConfigSpecWithChoices):
             )
 
     def _set_const(self, const):
-        if const is not NONE and self.nargs != ZERO_OR_ONE:
+        if const is not NONE and self.nargs != "?":
             raise ValueError(
                 f"const cannot be supplied to the {self.action} action "
-                f"unless nargs is {ZERO_OR_ONE}"
+                f'unless nargs is "?"'
             )
         self.const = const
 
@@ -701,29 +693,24 @@ class _CountConfigSpec(_ConfigSpec):
         return value
 
 
-class _ExtendConfigSpec(_ConfigSpecWithChoices):
+class _ExtendConfigSpec(_AppendConfigSpec):
     action = "extend"
 
-    def __init__(self, default=NONE, **kwargs):
+    def __init__(self, **kwargs):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
-        super().__init__(nargs="+", **kwargs)
-        self.default = default
+        if "nargs" not in kwargs:
+            kwargs["nargs"] = "+"
+        super().__init__(**kwargs)
 
     def _accumulate_processed_value(self, current, new):
         assert new is not NONE
-        assert isinstance(new, list)
+        if not isinstance(new, list):
+            new = [new]
         if current is NONE:
             return new
         return current + new
-
-    def apply_default(self, value, global_default):
-        if value is NONE:
-            return self.default
-        if self.default is not NONE and self.default is not SUPPRESS:
-            return self.default + value
-        return value
 
 
 class ConfigParser:
