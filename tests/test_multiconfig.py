@@ -319,6 +319,100 @@ def test_count_missing_with_default():
     assert values == expected_values
 
 
+def test_priorities():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c")
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=1)
+    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=3)
+    values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": "v3"})
+
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c")
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
+    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
+    values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": "v1"})
+
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", action="append")
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=1)
+    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=3)
+    values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": ["v1", "v2", "v3"]})
+
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", action="append")
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
+    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
+    values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": ["v3", "v2", "v1"]})
+
+
+def test_priorities_with_default():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", action="append", default=["d"])
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
+    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
+    values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": ["d", "v3", "v2", "v1"]})
+
+    mc_parser = mc.ConfigParser(config_default=["cd"])
+    mc_parser.add_config("c", action="append")
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
+    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
+    values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": ["cd", "v3", "v2", "v1"]})
+
+    mc_parser = mc.ConfigParser(config_default=["cd"])
+    mc_parser.add_config("c", action="append", default=["d"])
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
+    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
+    values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": ["d", "v3", "v2", "v1"]})
+
+
+def test_priorities_with_multiple_values_from_source():
+    # Multiple values from a single source should retain their ordering
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", action="extend")
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
+    mc_parser.add_source(mc.SimpleArgparseSource, priority=2)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
+    with utm.patch.object(sys, "argv", "prog --c v2a v2b".split()):
+        values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": ["v3", "v2a", "v2b", "v1"]})
+
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", action="extend")
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=1)
+    mc_parser.add_source(mc.SimpleArgparseSource, priority=2)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=3)
+    with utm.patch.object(sys, "argv", "prog --c v2a v2b".split()):
+        values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": ["v1", "v2a", "v2b", "v3"]})
+
+
+def test_priorities_stable_sort():
+    # values from multiple sources with the same priority should be in the
+    # order the sources were added
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", action="extend")
+    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=0)
+    mc_parser.add_source(mc.SimpleArgparseSource, priority=0)
+    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=0)
+    with utm.patch.object(sys, "argv", "prog --c v2a v2b".split()):
+        values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": ["v1", "v2a", "v2b", "v3"]})
+
+
 test_specs = []
 
 nargs_test_specs = []

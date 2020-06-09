@@ -8,6 +8,7 @@ import argparse
 import copy
 import functools
 import json
+import operator
 import re
 
 # Make argparse.FileType available in this module
@@ -142,6 +143,9 @@ class Source(abc.ABC):
     ABC for Source classes.
     """
 
+    def __init__(self, priority=0):
+        self.priority = priority
+
     @abc.abstractmethod
     def parse_config(self):
         """
@@ -167,8 +171,13 @@ class DictSource(Source):
     """
 
     def __init__(
-        self, config_specs, d, none_values=[None, PRESENT_WITHOUT_VALUE]
+        self,
+        config_specs,
+        d,
+        none_values=[None, PRESENT_WITHOUT_VALUE],
+        priority=0,
     ):
+        super().__init__(priority=priority)
         self._config_specs = config_specs
         self._dict = d
         self._none_values = none_values
@@ -197,10 +206,11 @@ class DictSource(Source):
 
 
 class ArgparseSource(Source):
-    def __init__(self, config_specs):
+    def __init__(self, config_specs, priority=20):
         """
         Don't call this directly, use ConfigParser.add_source() instead.
         """
+        super().__init__(priority=priority)
         self._config_specs = config_specs
         self._parsed_values = None
 
@@ -282,11 +292,13 @@ class SimpleArgparseSource(Source):
         self,
         config_specs,
         argument_parser_class=argparse.ArgumentParser,
+        priority=20,
         **kwargs,
     ):
         """
         Don't call this directly, use ConfigParser.add_source() instead.
         """
+        super().__init__(priority=priority)
         self._argparse_source = ArgparseSource(config_specs)
         self._argparse_parser = argument_parser_class(**kwargs)
         self._argparse_source.add_configs_to_argparse_parser(
@@ -326,10 +338,12 @@ class JsonSource(Source):
         fileobj=None,
         none_values=[],
         json_none_values=["null"],
+        priority=0,
     ):
         """
         Don't call this directly, use ConfigParser.add_source() instead.
         """
+        super().__init__(priority=priority)
         if path and fileobj:
             raise ValueError(
                 "JsonSource's 'path' and 'fileobj' options were both "
@@ -417,9 +431,6 @@ class _ConfigSpec(abc.ABC):
             raise ValueError(
                 "cannot set both include_sources and exclude_sources"
             )
-
-    def accumulate_raw_values(self, current, raw_news):
-        return functools.reduce(self.accumulate_raw_value, raw_news, current)
 
     def accumulate_raw_value(self, current, raw_new):
         """
@@ -722,6 +733,11 @@ class _ExtendConfigSpec(_AppendConfigSpec):
 
 
 class ConfigParser:
+    class ValueWithPriority:
+        def __init__(self, value, priority):
+            self.value = value
+            self.priority = priority
+
     def __init__(self, config_default=NONE):
         """
         Create a ConfigParser object.
@@ -736,7 +752,7 @@ class ConfigParser:
         """
         self._config_specs = []
         self._sources = []
-        self._parsed_values = Namespace()
+        self._parsed_values = {}
         self._global_default = config_default
 
     def add_config(self, name, **kwargs):
@@ -757,17 +773,53 @@ class ConfigParser:
         self._sources.append(source)
         return source
 
-    def _add_preparsed_values(self, preparsed_values, source):
+    def _add_parsed_values(self, values, new_values, source):
         for spec in self._config_specs:
-            if not hasattr(preparsed_values, spec.name):
+            if not hasattr(new_values, spec.name):
                 continue
             if self._ignore_config_for_source(spec, source):
                 continue
-            current = _getattr_or_none(self._parsed_values, spec.name)
-            raw_news = getattr(preparsed_values, spec.name)
-            new = spec.accumulate_raw_values(current, raw_news)
-            assert new is not NONE
-            setattr(self._parsed_values, spec.name, new)
+            if not hasattr(values, spec.name):
+                setattr(values, spec.name, [])
+            new_vals = getattr(new_values, spec.name)
+            getattr(values, spec.name).extend(
+                (self.ValueWithPriority(v, source.priority) for v in new_vals)
+            )
+
+    def _accumulate_parsed_values(self, parsed_values):
+        for spec in self._config_specs:
+            if not hasattr(parsed_values, spec.name):
+                continue
+            # Sort the values according to the priorities of the sources,
+            # lowest priority first. When accumulating, sources should give the
+            # so-far-accumulated value less priority than a new value.
+            #
+            # sorted() is guaranteed to use a stable sort so the order in which
+            # values are given for any particular source is preserved.
+            raw_values = (
+                v.value
+                for v in sorted(
+                    getattr(parsed_values, spec.name),
+                    key=operator.attrgetter("priority"),
+                )
+            )
+            accumulated_value = functools.reduce(
+                spec.accumulate_raw_value, raw_values, NONE
+            )
+            assert accumulated_value is not NONE
+            setattr(parsed_values, spec.name, accumulated_value)
+        return parsed_values
+
+    def _parse_config(self, check_required):
+        parsed_values = Namespace()
+        for source in self._sources:
+            new_values = source.parse_config()
+            self._add_parsed_values(parsed_values, new_values, source)
+        self._accumulate_parsed_values(parsed_values)
+        if check_required:
+            self._check_required_configs(parsed_values)
+        self._apply_defaults(parsed_values)
+        return parsed_values
 
     def partially_parse_config(self):
         """
@@ -776,10 +828,7 @@ class ConfigParser:
 
         Returns: a multiconfig.Namespace object containing the parsed values.
         """
-        for source in self._sources:
-            new_values = source.parse_config()
-            self._add_preparsed_values(new_values, source)
-        return self._get_configs_with_defaults()
+        return self._parse_config(check_required=False)
 
     def parse_config(self):
         """
@@ -787,27 +836,25 @@ class ConfigParser:
 
         Returns: a multiconfig.Namespace object containing the parsed values.
         """
-        values = self.partially_parse_config()
-        self._check_required_configs()
-        return values
+        return self._parse_config(check_required=True)
 
-    def _get_configs_with_defaults(self):
-        values = copy.copy(self._parsed_values)
+    def _apply_defaults(self, parsed_values):
         for spec in self._config_specs:
             value = spec.apply_default(
-                _getattr_or_none(values, spec.name), self._global_default
+                _getattr_or_none(parsed_values, spec.name),
+                self._global_default,
             )
             if value is SUPPRESS:
-                continue
+                if hasattr(parsed_values, spec.name):
+                    delattr(parsed_values, spec.name)
             elif value is NONE:
-                setattr(values, spec.name, None)
+                setattr(parsed_values, spec.name, None)
             else:
-                setattr(values, spec.name, value)
-        return values
+                setattr(parsed_values, spec.name, value)
 
-    def _check_required_configs(self):
+    def _check_required_configs(self, parsed_values):
         for spec in self._config_specs:
-            if not _has_nonnone_attr(self._parsed_values, spec.name):
+            if not _has_nonnone_attr(parsed_values, spec.name):
                 if spec.required:
                     raise RequiredConfigNotFoundError(
                         f"Did not find value for config item '{spec.name}'"
