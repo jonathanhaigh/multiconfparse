@@ -399,6 +399,8 @@ class _ConfigSpec(abc.ABC):
         required=False,
         choices=None,
         help=None,
+        include_sources=None,
+        exclude_sources=None,
     ):
         """
         Don't call this directly - use create() instead.
@@ -409,6 +411,12 @@ class _ConfigSpec(abc.ABC):
         self.required = required
         self.choices = choices
         self.help = help
+        self.include_sources = include_sources
+        self.exclude_sources = exclude_sources
+        if include_sources is not None and exclude_sources is not None:
+            raise ValueError(
+                "cannot set both include_sources and exclude_sources"
+            )
 
     def accumulate_raw_values(self, current, raw_news):
         return functools.reduce(self.accumulate_raw_value, raw_news, current)
@@ -749,9 +757,11 @@ class ConfigParser:
         self._sources.append(source)
         return source
 
-    def _add_preparsed_values(self, preparsed_values):
+    def _add_preparsed_values(self, preparsed_values, source):
         for spec in self._config_specs:
             if not hasattr(preparsed_values, spec.name):
+                continue
+            if self._ignore_config_for_source(spec, source):
                 continue
             current = _getattr_or_none(self._parsed_values, spec.name)
             raw_news = getattr(preparsed_values, spec.name)
@@ -768,7 +778,7 @@ class ConfigParser:
         """
         for source in self._sources:
             new_values = source.parse_config()
-            self._add_preparsed_values(new_values)
+            self._add_preparsed_values(new_values, source)
         return self._get_configs_with_defaults()
 
     def parse_config(self):
@@ -802,6 +812,14 @@ class ConfigParser:
                     raise RequiredConfigNotFoundError(
                         f"Did not find value for config item '{spec.name}'"
                     )
+
+    @staticmethod
+    def _ignore_config_for_source(config, source):
+        if config.exclude_sources is not None:
+            return source.__class__ in config.exclude_sources
+        if config.include_sources is not None:
+            return source.__class__ not in config.include_sources
+        return False
 
 
 # ------------------------------------------------------------------------------

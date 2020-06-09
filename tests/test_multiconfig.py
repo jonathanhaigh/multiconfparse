@@ -1227,6 +1227,45 @@ def test_multiple_sources():
     assert values == expected_values
 
 
+def test_include_exclude():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config(
+        "c1",
+        action="append",
+        include_sources=(mc.SimpleArgparseSource, mc.JsonSource),
+    )
+    mc_parser.add_config(
+        "c2", action="append", exclude_sources=(mc.DictSource, mc.JsonSource),
+    )
+    mc_parser.add_config("c3", action="append")
+    fileobj = io.StringIO(
+        """{
+        "c1": "v1_json",
+        "c2": "v2_json",
+        "c3": "v3_json"
+    }"""
+    )
+    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
+    d = {
+        "c1": "v1_dict",
+        "c2": "v2_dict",
+        "c3": "v3_dict",
+    }
+    mc_parser.add_source(mc.DictSource, d)
+    argv = "prog --c1 v1_ap --c2 v2_ap --c3 v3_ap".split()
+    mc_parser.add_source(mc.SimpleArgparseSource)
+    with utm.patch.object(sys, "argv", argv):
+        values = mc_parser.parse_config()
+    expected_values = mc._namespace_from_dict(
+        {
+            "c1": ["v1_json", "v1_ap"],
+            "c2": ["v2_ap"],
+            "c3": ["v3_json", "v3_dict", "v3_ap"],
+        }
+    )
+    assert values == expected_values
+
+
 # ------------------------------------------------------------------------------
 # Free function tests
 # ------------------------------------------------------------------------------
