@@ -174,12 +174,14 @@ class DictSource(Source):
         self,
         config_specs,
         d,
-        none_values=[None, PRESENT_WITHOUT_VALUE],
+        none_values=None,
         priority=0,
     ):
         super().__init__(priority=priority)
         self._config_specs = config_specs
         self._dict = d
+        if none_values is None:
+            none_values = [None, PRESENT_WITHOUT_VALUE]
         self._none_values = none_values
 
     def parse_config(self):
@@ -336,8 +338,8 @@ class JsonSource(Source):
         config_specs,
         path=None,
         fileobj=None,
-        none_values=[],
-        json_none_values=["null"],
+        none_values=None,
+        json_none_values=None,
         priority=0,
     ):
         """
@@ -349,6 +351,12 @@ class JsonSource(Source):
                 "JsonSource's 'path' and 'fileobj' options were both "
                 "specified but only one is expected"
             )
+
+        if none_values is None:
+            none_values = []
+        if json_none_values is None:
+            json_none_values = ["null"]
+
         d = self._get_json(path, fileobj)
         self._dict_source = DictSource(
             config_specs,
