@@ -9,8 +9,10 @@ import argparse
 import io
 import itertools
 import json
+import os
 import pathlib
 import pytest
+import shlex
 import sys
 import tempfile
 import unittest.mock as utm
@@ -125,6 +127,13 @@ def get_default_nargs_for_action(action):
 
 def split_str(s):
     return s.split()
+
+
+def shlex_join(words):
+    if sys.version_info < (3, 8):
+        # shlex.join() was new in 3.8.
+        return " ".join((shlex.quote(w) for w in words))
+    return shlex.join(words)
 
 
 # ------------------------------------------------------------------------------
@@ -1047,6 +1056,48 @@ def _test_spec_with_dict(spec):
         dict_source["c"] = spec.dict_source
     mc_parser.add_source(mc.DictSource, dict_source)
     values = mc_parser.parse_config()
+    if spec.expected is mc.NONE:
+        assert not hasattr(values, "c")
+    else:
+        assert getattr(values, "c") == spec.expected
+
+
+@pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
+def test_spec_with_env(spec):
+    if spec.dict_source is OMIT_TEST_FOR_SOURCE:
+        pytest.skip("EnvSource does not support this test")
+        return
+    if spec.expected is Exception:
+        with pytest.raises(Exception):
+            _test_spec_with_env(spec)
+    else:
+        _test_spec_with_env(spec)
+
+
+def _test_spec_with_env(spec):
+    mc_parser = mc.ConfigParser(**spec.config_parser_args)
+    mc_parser.add_config("c", **spec.config_args)
+    env = {}
+    if spec.dict_source is not mc.NONE:
+        if isinstance(spec.dict_source, list):
+            env["MULTICONFIG_TEST_C"] = shlex_join(
+                (str(v) for v in spec.dict_source)
+            )
+        elif (
+            spec.dict_source is None
+            or spec.dict_source is mc.PRESENT_WITHOUT_VALUE
+        ):
+            env["MULTICONFIG_TEST_C"] = ""
+        else:
+            env["MULTICONFIG_TEST_C"] = shlex.quote(str(spec.dict_source))
+    mc_parser.add_source(
+        mc.EnvironmentSource, env_var_prefix="MULTICONFIG_TEST_",
+    )
+    print(f"env={env}")
+    with utm.patch.object(os, "environ", env):
+        values = mc_parser.parse_config()
+    print(f"values={values}")
+    print(f"expected={spec.expected}")
     if spec.expected is mc.NONE:
         assert not hasattr(values, "c")
     else:

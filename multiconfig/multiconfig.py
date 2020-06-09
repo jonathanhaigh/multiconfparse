@@ -9,7 +9,9 @@ import copy
 import functools
 import json
 import operator
+import os
 import re
+import shlex
 
 # Make argparse.FileType available in this module
 FileType = argparse.FileType
@@ -171,11 +173,7 @@ class DictSource(Source):
     """
 
     def __init__(
-        self,
-        config_specs,
-        d,
-        none_values=None,
-        priority=0,
+        self, config_specs, d, none_values=None, priority=0,
     ):
         super().__init__(priority=priority)
         self._config_specs = config_specs
@@ -205,6 +203,59 @@ class DictSource(Source):
                 value = PRESENT_WITHOUT_VALUE
             setattr(ns, spec.name, [value])
         return ns
+
+
+class EnvironmentSource(Source):
+    """
+    Obtains config values from the environment.
+
+    Do not create objects of this class directly - create them via
+    ConfigParser.add_source() instead:
+    config_parser.add_source(multiconfig.EnvironmentSource)
+    """
+
+    def __init__(
+        self, config_specs, none_values=None, priority=10, env_var_prefix="",
+    ):
+        super().__init__(priority=priority)
+        self._config_specs = config_specs
+
+        if none_values is None:
+            none_values = [""]
+        self._none_values = none_values
+        self._env_var_prefix = env_var_prefix
+
+    def parse_config(self):
+        ns = Namespace()
+        for spec in self._config_specs:
+            env_name = self._config_name_to_env_name(spec.name)
+            print(f"parse_config(): env_name={env_name}")
+            print(f"parse_config(): os.environ={os.environ}")
+            if env_name not in os.environ:
+                print(f"parse_config(): {env_name} not in os.environ")
+                continue
+            value = os.environ[env_name]
+            print(f"parse_config(): value={value}")
+            if spec.nargs == "?" and value in self._none_values:
+                value = PRESENT_WITHOUT_VALUE
+            elif spec.nargs == "*":
+                if value in self._none_values:
+                    value = []
+                else:
+                    value = shlex.split(value)
+            elif spec.nargs == "+":
+                value = shlex.split(value)
+            elif spec.nargs == 0:
+                if value not in self._none_values:
+                    raise InvalidValueForNargs0Error(value, self._none_values)
+                value = PRESENT_WITHOUT_VALUE
+            elif isinstance(spec.nargs, int) and spec.nargs > 1:
+                value = shlex.split(value)
+            setattr(ns, spec.name, [value])
+        return ns
+
+    def _config_name_to_env_name(self, config_name):
+        return f"{self._env_var_prefix}{config_name.upper()}"
 
 
 class ArgparseSource(Source):
