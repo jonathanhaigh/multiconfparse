@@ -631,7 +631,7 @@ class _StoreConfigSpec(_ConfigSpecWithChoices):
         assert new is not NONE
         return new
 
-    def apply_default(self, value, global_default):
+    def apply_default(self, value):
         if value is NONE:
             return self.default
         if self.nargs == "?" and value is PRESENT_WITHOUT_VALUE:
@@ -673,7 +673,7 @@ class _StoreConstConfigSpec(_ConfigSpec):
         assert new is PRESENT_WITHOUT_VALUE
         return PRESENT_WITHOUT_VALUE
 
-    def apply_default(self, value, global_default):
+    def apply_default(self, value):
         if value is PRESENT_WITHOUT_VALUE:
             return self.const
         assert value is NONE
@@ -717,7 +717,7 @@ class _AppendConfigSpec(_ConfigSpecWithChoices):
             return [new]
         return current + [new]
 
-    def apply_default(self, value, global_default):
+    def apply_default(self, value):
         if value is NONE:
             return self.default
         if self.nargs == "?":
@@ -763,7 +763,7 @@ class _CountConfigSpec(_ConfigSpec):
             return 1
         return current + 1
 
-    def apply_default(self, value, global_default):
+    def apply_default(self, value):
         if value is NONE:
             return self.default
         if self.default is not NONE and self.default is not SUPPRESS:
@@ -901,7 +901,6 @@ class ConfigParser:
         for spec in self._config_specs:
             value = spec.apply_default(
                 _getattr_or_none(parsed_values, spec.name),
-                self._global_default,
             )
             if value is SUPPRESS:
                 if hasattr(parsed_values, spec.name):

@@ -426,9 +426,7 @@ def test_dict_source_none_values():
     mc_parser = mc.ConfigParser()
     mc_parser.add_config("c", action="store", nargs="?", const="cv")
     mc_parser.add_source(
-        mc.DictSource,
-        {"c": "none_value"},
-        none_values=["none_value"]
+        mc.DictSource, {"c": "none_value"}, none_values=["none_value"]
     )
     values = mc_parser.parse_config()
     assert values == mc._namespace_from_dict({"c": "cv"})
@@ -452,9 +450,7 @@ def test_json_source_none_values():
     mc_parser.add_config("c", action="store", nargs="?", const="cv")
     fileobj = io.StringIO('{"c": "none_value"}')
     mc_parser.add_source(
-        mc.JsonSource,
-        fileobj=fileobj,
-        none_values=["none_value"],
+        mc.JsonSource, fileobj=fileobj, none_values=["none_value"],
     )
     values = mc_parser.parse_config()
     assert values == mc._namespace_from_dict({"c": "cv"})
