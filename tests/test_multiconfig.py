@@ -422,6 +422,44 @@ def test_priorities_stable_sort():
     assert values == mc._namespace_from_dict({"c": ["v1", "v2a", "v2b", "v3"]})
 
 
+def test_dict_source_none_values():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", action="store", nargs="?", const="cv")
+    mc_parser.add_source(
+        mc.DictSource,
+        {"c": "none_value"},
+        none_values=["none_value"]
+    )
+    values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": "cv"})
+
+
+def test_env_source_none_values():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", action="store", nargs="?", const="cv")
+    mc_parser.add_source(
+        mc.EnvironmentSource,
+        env_var_prefix="TEST_",
+        none_values=["none_value"],
+    )
+    with utm.patch.object(os, "environ", {"TEST_C": "none_value"}):
+        values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": "cv"})
+
+
+def test_json_source_none_values():
+    mc_parser = mc.ConfigParser()
+    mc_parser.add_config("c", action="store", nargs="?", const="cv")
+    fileobj = io.StringIO('{"c": "none_value"}')
+    mc_parser.add_source(
+        mc.JsonSource,
+        fileobj=fileobj,
+        none_values=["none_value"],
+    )
+    values = mc_parser.parse_config()
+    assert values == mc._namespace_from_dict({"c": "cv"})
+
+
 test_specs = []
 
 nargs_test_specs = []
