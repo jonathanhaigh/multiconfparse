@@ -229,13 +229,9 @@ class EnvironmentSource(Source):
         ns = Namespace()
         for spec in self._config_specs:
             env_name = self._config_name_to_env_name(spec.name)
-            print(f"parse_config(): env_name={env_name}")
-            print(f"parse_config(): os.environ={os.environ}")
             if env_name not in os.environ:
-                print(f"parse_config(): {env_name} not in os.environ")
                 continue
             value = os.environ[env_name]
-            print(f"parse_config(): value={value}")
             if spec.nargs == "?" and value in self._none_values:
                 value = PRESENT_WITHOUT_VALUE
             elif spec.nargs == "*":
@@ -470,6 +466,7 @@ class _ConfigSpec(abc.ABC):
         nargs=None,
         type=str,
         required=False,
+        default=NONE,
         choices=None,
         help=None,
         include_sources=None,
@@ -482,6 +479,7 @@ class _ConfigSpec(abc.ABC):
         self._set_nargs(nargs)
         self._set_type(type)
         self.required = required
+        self.default = default
         self.choices = choices
         self.help = help
         self.include_sources = include_sources
@@ -529,19 +527,6 @@ class _ConfigSpec(abc.ABC):
         * had any processing for const arguments.
 
         Returns: the new combined value.
-        """
-
-    @abc.abstractmethod
-    def apply_default(self, value):
-        """
-        Returns a value for this config item after applying defaults.
-
-        This method must be implemented by subclasses.
-
-        Args:
-        * value: The current value for this config item (which maybe NONE).
-          This value has already been coerced to the config's type (unless it
-          is NONE).
         """
 
     def _set_name(self, name):
@@ -619,24 +604,18 @@ class _ConfigSpecWithChoices(_ConfigSpec):
 class _StoreConfigSpec(_ConfigSpecWithChoices):
     action = "store"
 
-    def __init__(self, const=NONE, default=NONE, **kwargs):
+    def __init__(self, const=None, **kwargs):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
         super().__init__(**kwargs)
         self._set_const(const)
-        self.default = default
 
     def _accumulate_processed_value(self, current, new):
         assert new is not NONE
-        return new
-
-    def apply_default(self, value):
-        if value is NONE:
-            return self.default
-        if self.nargs == "?" and value is PRESENT_WITHOUT_VALUE:
+        if self.nargs == "?" and new is PRESENT_WITHOUT_VALUE:
             return self.const
-        return value
+        return new
 
     def _set_nargs(self, nargs):
         super()._set_nargs(nargs)
@@ -646,7 +625,7 @@ class _StoreConfigSpec(_ConfigSpecWithChoices):
             )
 
     def _set_const(self, const):
-        if const is not NONE and self.nargs != "?":
+        if const is not None and self.nargs != "?":
             raise ValueError(
                 f"const cannot be supplied to the {self.action} action "
                 f'unless nargs is "?"'
@@ -657,9 +636,7 @@ class _StoreConfigSpec(_ConfigSpecWithChoices):
 class _StoreConstConfigSpec(_ConfigSpec):
     action = "store_const"
 
-    def __init__(
-        self, const, default=NONE, **kwargs,
-    ):
+    def __init__(self, const, **kwargs):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
@@ -667,17 +644,10 @@ class _StoreConstConfigSpec(_ConfigSpec):
             nargs=0, type=present_without_value, required=False, **kwargs
         )
         self.const = const
-        self.default = default
 
     def _accumulate_processed_value(self, current, new):
         assert new is PRESENT_WITHOUT_VALUE
-        return PRESENT_WITHOUT_VALUE
-
-    def apply_default(self, value):
-        if value is PRESENT_WITHOUT_VALUE:
-            return self.const
-        assert value is NONE
-        return self.default
+        return self.const
 
 
 class _StoreTrueConfigSpec(_StoreConstConfigSpec):
@@ -703,31 +673,20 @@ class _StoreFalseConfigSpec(_StoreConstConfigSpec):
 class _AppendConfigSpec(_ConfigSpecWithChoices):
     action = "append"
 
-    def __init__(self, const=NONE, default=NONE, **kwargs):
+    def __init__(self, const=None, **kwargs):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
         super().__init__(**kwargs)
         self._set_const(const)
-        self.default = default
 
     def _accumulate_processed_value(self, current, new):
         assert new is not NONE
+        if self.nargs == "?" and new is PRESENT_WITHOUT_VALUE:
+            new = self.const
         if current is NONE:
             return [new]
         return current + [new]
-
-    def apply_default(self, value):
-        if value is NONE:
-            return self.default
-        if self.nargs == "?":
-            const = None
-            if self.const is not NONE:
-                const = self.const
-            value = [const if v is PRESENT_WITHOUT_VALUE else v for v in value]
-        if self.default is not NONE and self.default is not SUPPRESS:
-            return self.default + value
-        return value
 
     def _set_nargs(self, nargs):
         super()._set_nargs(nargs)
@@ -737,7 +696,7 @@ class _AppendConfigSpec(_ConfigSpecWithChoices):
             )
 
     def _set_const(self, const):
-        if const is not NONE and self.nargs != "?":
+        if const is not None and self.nargs != "?":
             raise ValueError(
                 f"const cannot be supplied to the {self.action} action "
                 f'unless nargs is "?"'
@@ -749,26 +708,18 @@ class _CountConfigSpec(_ConfigSpec):
     action = "count"
 
     def __init__(
-        self, default=NONE, **kwargs,
+        self, **kwargs,
     ):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
         super().__init__(nargs=0, type=present_without_value, **kwargs)
-        self.default = default
 
     def _accumulate_processed_value(self, current, new):
         assert new is PRESENT_WITHOUT_VALUE
         if current is NONE:
             return 1
         return current + 1
-
-    def apply_default(self, value):
-        if value is NONE:
-            return self.default
-        if self.default is not NONE and self.default is not SUPPRESS:
-            return self.default + value
-        return value
 
 
 class _ExtendConfigSpec(_AppendConfigSpec):
@@ -784,6 +735,8 @@ class _ExtendConfigSpec(_AppendConfigSpec):
 
     def _accumulate_processed_value(self, current, new):
         assert new is not NONE
+        if self.nargs == "?" and new is PRESENT_WITHOUT_VALUE:
+            new = self.const
         if not isinstance(new, list):
             new = [new]
         if current is NONE:
@@ -796,6 +749,11 @@ class ConfigParser:
         def __init__(self, value, priority):
             self.value = value
             self.priority = priority
+
+        def __str__(self):
+            return f"ValueWithPriority({self.value}, {self.priority})"
+
+        __repr__ = __str__
 
     def __init__(self, config_default=NONE):
         """
@@ -847,8 +805,6 @@ class ConfigParser:
 
     def _accumulate_parsed_values(self, parsed_values):
         for spec in self._config_specs:
-            if not hasattr(parsed_values, spec.name):
-                continue
             # Sort the values according to the priorities of the sources,
             # lowest priority first. When accumulating, sources should give the
             # so-far-accumulated value less priority than a new value.
@@ -863,22 +819,31 @@ class ConfigParser:
                 )
             )
             accumulated_value = functools.reduce(
-                spec.accumulate_raw_value, raw_values, NONE
+                spec.accumulate_raw_value, raw_values
             )
-            assert accumulated_value is not NONE
             setattr(parsed_values, spec.name, accumulated_value)
         return parsed_values
 
     def _parse_config(self, check_required):
         parsed_values = Namespace()
+        self._collect_defaults(parsed_values)
+        configs_seen = {}
         for source in self._sources:
             new_values = source.parse_config()
+            configs_seen.update(vars(new_values))
             self._add_parsed_values(parsed_values, new_values, source)
         self._accumulate_parsed_values(parsed_values)
         if check_required:
-            self._check_required_configs(parsed_values)
-        self._apply_defaults(parsed_values)
+            self._check_required_configs(configs_seen)
+        self._process_missing(parsed_values)
         return parsed_values
+
+    def _collect_defaults(self, ns):
+        for spec in self._config_specs:
+            default = spec.default
+            if spec.default is SUPPRESS:
+                default = NONE
+            setattr(ns, spec.name, [self.ValueWithPriority(default, -1)])
 
     def partially_parse_config(self):
         """
@@ -897,26 +862,20 @@ class ConfigParser:
         """
         return self._parse_config(check_required=True)
 
-    def _apply_defaults(self, parsed_values):
+    def _process_missing(self, parsed_values):
         for spec in self._config_specs:
-            value = spec.apply_default(
-                _getattr_or_none(parsed_values, spec.name),
-            )
-            if value is SUPPRESS:
-                if hasattr(parsed_values, spec.name):
+            if getattr(parsed_values, spec.name) is NONE:
+                if spec.default is SUPPRESS:
                     delattr(parsed_values, spec.name)
-            elif value is NONE:
-                setattr(parsed_values, spec.name, None)
-            else:
-                setattr(parsed_values, spec.name, value)
+                else:
+                    setattr(parsed_values, spec.name, None)
 
-    def _check_required_configs(self, parsed_values):
+    def _check_required_configs(self, configs_seen):
         for spec in self._config_specs:
-            if not _has_nonnone_attr(parsed_values, spec.name):
-                if spec.required:
-                    raise RequiredConfigNotFoundError(
-                        f"Did not find value for config item '{spec.name}'"
-                    )
+            if spec.required and spec.name not in configs_seen:
+                raise RequiredConfigNotFoundError(
+                    f"Did not find value for config item '{spec.name}'"
+                )
 
     @staticmethod
     def _ignore_config_for_source(config, source):
