@@ -3,8 +3,6 @@
 # Copyright 2020 Jonathan Haigh <jonathanhaigh@gmail.com>
 # SPDX-License-Identifier: MIT
 
-from multiconfig import multiconfig as mc
-
 import argparse
 import io
 import itertools
@@ -16,6 +14,10 @@ import shlex
 import sys
 import tempfile
 import unittest.mock as utm
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from multiconfig import multiconfig as mc  # noqa: E402
+
 
 VALID_CONFIG_NAMES = ("c1", "c_", "C", "_c")
 INVALID_CONFIG_NAMES = ("-c", "c-", "1c")
