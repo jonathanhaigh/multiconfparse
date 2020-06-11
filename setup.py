@@ -9,13 +9,13 @@ with open("README.md") as f:
     long_desc = f.read()
 
 setuptools.setup(
-    name="multiconfig",
+    name="multiconfparse",
     packages=setuptools.find_packages(),
     version="0.0.1",
     description="Parser for configuration from multiple sources",
     long_description=long_desc,
     long_description_content_type="text/markdown",
-    url="https://github.com/jonathanhaigh/multiconfig",
+    url="https://github.com/jonathanhaigh/multiconfparse",
     author="Jonathan Haigh",
     author_email="jonathanhaigh@gmail.com",
     license="MIT",

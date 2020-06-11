@@ -2,29 +2,29 @@
 Copyright 2020 Jonathan Haigh <jonathanhaigh@gmail.com>
 SPDX-License-Identifier: MIT
 -->
-# `multiconfig` (name to be changed!)
+# `multiconfparse`
 
-`multiconfig` is a Python3 library for specifying and reading configuration
+`multiconfparse` is a Python3 library for specifying and reading configuration
 data from multiple sources.
 
 ## Installation
 
 ```shell
-python -m pip install git+https://github.com/jonathanhaigh/multiconfig
+python -m pip install git+https://github.com/jonathanhaigh/multiconfparse
 ```
 
 ## Quickstart
 
-1. Import the `multiconfig` module:
+1. Import the `multiconfparse` module:
    ```python
-   import multiconfig.multiconfig as mc
+   import multiconfparse.multiconfparse as mcp
    ```
 
 1. Create a `ConfigParser` object:
    ```python
-   import multiconfig.multiconfig as mc
+   import multiconfparse.multiconfparse as mcp
 
-   config_parser = mc.ConfigParser()
+   config_parser = mcp.ConfigParser()
    ```
    `ConfigParser`s:
    * contain the specifications of your configuration items;
@@ -42,15 +42,15 @@ python -m pip install git+https://github.com/jonathanhaigh/multiconfig
 
 1. Add `source`s:
    ```python
-    config_parser.add_source(mc.SimpleArgparseSource)
-    config_parser.add_source(mc.JsonSource, "/path/to/config/file.json")
+    config_parser.add_source(mcp.SimpleArgparseSource)
+    config_parser.add_source(mcp.JsonSource, "/path/to/config/file.json")
     ```
 
 1. Parse config from all `source`s:
     ```python
     config = config_parser.parse_config()
     ```
-    `ConfigParser.parse_config()` returns a `multiconfig.Namespace` object
+    `ConfigParser.parse_config()` returns a `multiconfparse.Namespace` object
     which is essentially just a plain object with attributes for each config
     item.
 

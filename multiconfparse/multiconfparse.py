@@ -153,7 +153,7 @@ class Source(abc.ABC):
         """
         Parse this config source.
 
-        Returns: a multiconfig.Namespace object containing the values parsed
+        Returns: a multiconfparse.Namespace object containing the values parsed
         from this config source.
 
         The values should *not* be coerced to the type specified by their
@@ -169,7 +169,7 @@ class DictSource(Source):
 
     Do not create objects of this class directly - create them via
     ConfigParser.add_source() instead:
-    config_parser.add_source(multiconfig.DictSource, {"some": "dict"})
+    config_parser.add_source(multiconfparse.DictSource, {"some": "dict"})
     """
 
     def __init__(
@@ -211,7 +211,7 @@ class EnvironmentSource(Source):
 
     Do not create objects of this class directly - create them via
     ConfigParser.add_source() instead:
-    config_parser.add_source(multiconfig.EnvironmentSource)
+    config_parser.add_source(multiconfparse.EnvironmentSource)
     """
 
     def __init__(
@@ -322,7 +322,7 @@ class SimpleArgparseSource(Source):
 
     Do not create objects of this class directly - create them via
     ConfigParser.add_source() instead:
-    config_parser.add_source(multiconfig.SimpleArgparseSource, **options)
+    config_parser.add_source(multiconfparse.SimpleArgparseSource, **options)
 
     Extra options that can be passed to ConfigParser.add_source() for
     SimpleArgparseSource are:
@@ -370,7 +370,7 @@ class JsonSource(Source):
 
     Do not create objects of this class directly - create them via
     ConfigParser.add_source() instead:
-    config_parser.add_source(multiconfig.JsonSource, **options)
+    config_parser.add_source(multiconfparse.JsonSource, **options)
 
     Extra options that can be passed to ConfigParser.add_source() for
     JsonSource are:
@@ -760,11 +760,11 @@ class ConfigParser:
         Create a ConfigParser object.
 
         Args:
-        * config_default: the value to use in the multiconfig.Namespace
+        * config_default: the value to use in the multiconfparse.Namespace
           returned by parse_config() for config items for which a value was not
           found in any config source. The default behaviour is to represent
           these config items with None. Set config_default to
-          multiconfig.SUPPRESS to prevent these configs from having an
+          multiconfparse.SUPPRESS to prevent these configs from having an
           attribute set in the Namespace at all.
         """
         self._config_specs = []
@@ -850,7 +850,8 @@ class ConfigParser:
         Parse the config sources, but don't raise a RequiredConfigNotFoundError
         exception if a required config is not found in any config source.
 
-        Returns: a multiconfig.Namespace object containing the parsed values.
+        Returns: a multiconfparse.Namespace object containing the parsed
+        values.
         """
         return self._parse_config(check_required=False)
 
@@ -858,7 +859,8 @@ class ConfigParser:
         """
         Parse the config sources.
 
-        Returns: a multiconfig.Namespace object containing the parsed values.
+        Returns: a multiconfparse.Namespace object containing the parsed
+        values.
         """
         return self._parse_config(check_required=True)
 

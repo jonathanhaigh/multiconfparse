@@ -16,7 +16,7 @@ import tempfile
 import unittest.mock as utm
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-from multiconfig import multiconfig as mc  # noqa: E402
+from multiconfparse import multiconfparse as mcp  # noqa: E402
 
 
 VALID_CONFIG_NAMES = ("c1", "c_", "C", "_c")
@@ -94,9 +94,9 @@ def get_const_value(category, type, index=0):
 
 
 def get_parse_return_value(
-    action, category, type, nargs, input_nargs=mc.NONE, index=0
+    action, category, type, nargs, input_nargs=mcp.NONE, index=0
 ):
-    if input_nargs is mc.NONE:
+    if input_nargs is mcp.NONE:
         input_nargs = nargs
     value = get_value(category, type, input_nargs, index)
 
@@ -203,24 +203,24 @@ class Spec:
 
 
 def test_partially_parse_config():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2")
-    mc_parser.add_source(mc.DictSource, {"c2": "v2"})
-    values = mc_parser.partially_parse_config()
-    expected_values = mc._namespace_from_dict({"c1": None, "c2": "v2"})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", required=True)
+    mcp_parser.add_config("c2")
+    mcp_parser.add_source(mcp.DictSource, {"c2": "v2"})
+    values = mcp_parser.partially_parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": None, "c2": "v2"})
     assert values == expected_values
 
 
 def test_types():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", type=str)
-    mc_parser.add_config("c2", type=int)
-    mc_parser.add_config("c3", type=pathlib.Path)
-    mc_parser.add_config("c4", type=json.loads)
-    mc_parser.add_config("c5", type=split_str)
-    mc_parser.add_source(
-        mc.DictSource,
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", type=str)
+    mcp_parser.add_config("c2", type=int)
+    mcp_parser.add_config("c3", type=pathlib.Path)
+    mcp_parser.add_config("c4", type=json.loads)
+    mcp_parser.add_config("c5", type=split_str)
+    mcp_parser.add_source(
+        mcp.DictSource,
         {
             "c1": "v1",
             "c2": "10",
@@ -229,8 +229,8 @@ def test_types():
             "c5": "word1 word2 word3",
         },
     )
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict(
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict(
         {
             "c1": "v1",
             "c2": 10,
@@ -248,214 +248,220 @@ def test_types():
 
 
 def test_file_opening():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", type=mc.FileType("r"))
-    mc_parser.add_config("c2", type=mc.FileType("w"))
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", type=mcp.FileType("r"))
+    mcp_parser.add_config("c2", type=mcp.FileType("w"))
     with tempfile.TemporaryDirectory() as tmpdir:
-        mc_parser.add_source(
-            mc.DictSource,
+        mcp_parser.add_source(
+            mcp.DictSource,
             {"c1": str(TEST_FILE_PATH), "c2": f"{tmpdir}/testfile2.txt"},
         )
-        values = mc_parser.parse_config()
+        values = mcp_parser.parse_config()
         assert values.c1.read() == TEST_FILE_CONTENT
         values.c2.write(TEST_FILE_CONTENT)
 
 
 @pytest.mark.parametrize("name", VALID_CONFIG_NAMES)
 def test_valid_name(name):
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config(name)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config(name)
 
 
 @pytest.mark.parametrize("name", INVALID_CONFIG_NAMES)
 def test_invalid_name(name):
-    mc_parser = mc.ConfigParser()
+    mcp_parser = mcp.ConfigParser()
     with pytest.raises(ValueError):
-        mc_parser.add_config(name)
+        mcp_parser.add_config(name)
 
 
 def test_validate_type():
-    mc_parser = mc.ConfigParser()
+    mcp_parser = mcp.ConfigParser()
     with pytest.raises(TypeError):
-        mc_parser.add_config("c1", type=1)
+        mcp_parser.add_config("c1", type=1)
 
 
 def test_count():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count")
-    mc_parser.add_source(mc.DictSource, {"c1": None})
-    mc_parser.add_source(mc.DictSource, {"c1": None})
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": 2})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count")
+    mcp_parser.add_source(mcp.DictSource, {"c1": None})
+    mcp_parser.add_source(mcp.DictSource, {"c1": None})
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": 2})
     assert values == expected_values
 
 
 def test_count_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count", default=10)
-    mc_parser.add_source(mc.DictSource, {"c1": None})
-    mc_parser.add_source(mc.DictSource, {"c1": None})
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": 12})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count", default=10)
+    mcp_parser.add_source(mcp.DictSource, {"c1": None})
+    mcp_parser.add_source(mcp.DictSource, {"c1": None})
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": 12})
     assert values == expected_values
 
 
 def test_count_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": None})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count")
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": None})
     assert values == expected_values
 
 
 def test_count_required_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count", required=True)
-    with pytest.raises(mc.RequiredConfigNotFoundError):
-        mc_parser.parse_config()
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count", required=True)
+    with pytest.raises(mcp.RequiredConfigNotFoundError):
+        mcp_parser.parse_config()
 
 
 def test_count_required_missing_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count", required=True, default=10)
-    with pytest.raises(mc.RequiredConfigNotFoundError):
-        mc_parser.parse_config()
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count", required=True, default=10)
+    with pytest.raises(mcp.RequiredConfigNotFoundError):
+        mcp_parser.parse_config()
 
 
 def test_count_missing_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count", default=10)
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": 10})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count", default=10)
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": 10})
     assert values == expected_values
 
 
 def test_priorities():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c")
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=1)
-    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=3)
-    values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": "v3"})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c")
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=1)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=3)
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": "v3"})
 
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c")
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
-    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
-    values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": "v1"})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c")
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": "v1"})
 
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c", action="append")
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=1)
-    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=3)
-    values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": ["v1", "v2", "v3"]})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="append")
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=1)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=3)
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": ["v1", "v2", "v3"]})
 
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c", action="append")
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
-    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
-    values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": ["v3", "v2", "v1"]})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="append")
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": ["v3", "v2", "v1"]})
 
 
 def test_priorities_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c", action="append", default=["d"])
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
-    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
-    values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": ["d", "v3", "v2", "v1"]})
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="append", default=["d"])
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": ["d", "v3", "v2", "v1"]})
 
-    mc_parser = mc.ConfigParser(config_default=["cd"])
-    mc_parser.add_config("c", action="append")
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
-    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
-    values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": ["cd", "v3", "v2", "v1"]})
+    mcp_parser = mcp.ConfigParser(config_default=["cd"])
+    mcp_parser.add_config("c", action="append")
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": ["cd", "v3", "v2", "v1"]})
 
-    mc_parser = mc.ConfigParser(config_default=["cd"])
-    mc_parser.add_config("c", action="append", default=["d"])
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
-    mc_parser.add_source(mc.DictSource, {"c": "v2"}, priority=2)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
-    values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": ["d", "v3", "v2", "v1"]})
+    mcp_parser = mcp.ConfigParser(config_default=["cd"])
+    mcp_parser.add_config("c", action="append", default=["d"])
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": ["d", "v3", "v2", "v1"]})
 
 
 def test_priorities_with_multiple_values_from_source():
     # Multiple values from a single source should retain their ordering
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c", action="extend")
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=3)
-    mc_parser.add_source(mc.SimpleArgparseSource, priority=2)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=1)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="extend")
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
+    mcp_parser.add_source(mcp.SimpleArgparseSource, priority=2)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
     with utm.patch.object(sys, "argv", "prog --c v2a v2b".split()):
-        values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": ["v3", "v2a", "v2b", "v1"]})
+        values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict(
+        {"c": ["v3", "v2a", "v2b", "v1"]}
+    )
 
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c", action="extend")
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=1)
-    mc_parser.add_source(mc.SimpleArgparseSource, priority=2)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=3)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="extend")
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=1)
+    mcp_parser.add_source(mcp.SimpleArgparseSource, priority=2)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=3)
     with utm.patch.object(sys, "argv", "prog --c v2a v2b".split()):
-        values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": ["v1", "v2a", "v2b", "v3"]})
+        values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict(
+        {"c": ["v1", "v2a", "v2b", "v3"]}
+    )
 
 
 def test_priorities_stable_sort():
     # values from multiple sources with the same priority should be in the
     # order the sources were added
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c", action="extend")
-    mc_parser.add_source(mc.DictSource, {"c": "v1"}, priority=0)
-    mc_parser.add_source(mc.SimpleArgparseSource, priority=0)
-    mc_parser.add_source(mc.DictSource, {"c": "v3"}, priority=0)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="extend")
+    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=0)
+    mcp_parser.add_source(mcp.SimpleArgparseSource, priority=0)
+    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=0)
     with utm.patch.object(sys, "argv", "prog --c v2a v2b".split()):
-        values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": ["v1", "v2a", "v2b", "v3"]})
+        values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict(
+        {"c": ["v1", "v2a", "v2b", "v3"]}
+    )
 
 
 def test_dict_source_none_values():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c", action="store", nargs="?", const="cv")
-    mc_parser.add_source(
-        mc.DictSource, {"c": "none_value"}, none_values=["none_value"]
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="store", nargs="?", const="cv")
+    mcp_parser.add_source(
+        mcp.DictSource, {"c": "none_value"}, none_values=["none_value"]
     )
-    values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": "cv"})
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": "cv"})
 
 
 def test_env_source_none_values():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c", action="store", nargs="?", const="cv")
-    mc_parser.add_source(
-        mc.EnvironmentSource,
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="store", nargs="?", const="cv")
+    mcp_parser.add_source(
+        mcp.EnvironmentSource,
         env_var_prefix="TEST_",
         none_values=["none_value"],
     )
     with utm.patch.object(os, "environ", {"TEST_C": "none_value"}):
-        values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": "cv"})
+        values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": "cv"})
 
 
 def test_json_source_none_values():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c", action="store", nargs="?", const="cv")
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="store", nargs="?", const="cv")
     fileobj = io.StringIO('{"c": "none_value"}')
-    mc_parser.add_source(
-        mc.JsonSource, fileobj=fileobj, none_values=["none_value"],
+    mcp_parser.add_source(
+        mcp.JsonSource, fileobj=fileobj, none_values=["none_value"],
     )
-    values = mc_parser.parse_config()
-    assert values == mc._namespace_from_dict({"c": "cv"})
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": "cv"})
 
 
 test_specs = []
@@ -610,7 +616,7 @@ for action, nargs in itertools.product(
                 "type": type,
                 "default": default_value,
             },
-            dict_source=mc.NONE,
+            dict_source=mcp.NONE,
             argparse_source="",
             test_without_source=True,
             expected=default_expected,
@@ -638,7 +644,7 @@ for action, nargs in itertools.product(
             ),
             config_parser_args={"config_default": global_default_value},
             config_args={"action": action, "nargs": nargs, "type": type},
-            dict_source=mc.NONE,
+            dict_source=mcp.NONE,
             argparse_source="",
             test_without_source=True,
             expected=global_default_expected,
@@ -678,7 +684,7 @@ for action, nargs in itertools.product(
                 "type": type,
                 "default": default_value,
             },
-            dict_source=mc.NONE,
+            dict_source=mcp.NONE,
             argparse_source="",
             test_without_source=True,
             expected=default_expected,
@@ -717,7 +723,7 @@ for action in ("store", "append", "extend"):
                 "type": type,
                 "const": const_value,
             },
-            dict_source=mc.NONE,
+            dict_source=mcp.NONE,
             argparse_source="",
             test_without_source=True,
             expected=None,
@@ -772,7 +778,7 @@ for action in ("store", "append", "extend"):
                 "const": const_value,
                 "default": default_value,
             },
-            dict_source=mc.NONE,
+            dict_source=mcp.NONE,
             argparse_source="",
             test_without_source=True,
             expected=default_expected,
@@ -843,7 +849,7 @@ store_const_test_specs = [
     Spec(
         id="store_const; args=no; default=yes",
         config_args={"action": "store_const", "const": "c", "default": "d"},
-        dict_source=mc.NONE,
+        dict_source=mcp.NONE,
         argparse_source="",
         expected="d",
     ),
@@ -861,7 +867,7 @@ store_true_test_specs = [
     Spec(
         id="store_true; args=no",
         config_args={"action": "store_true"},
-        dict_source=mc.NONE,
+        dict_source=mcp.NONE,
         argparse_source="",
         expected=False,
     ),
@@ -882,7 +888,7 @@ store_true_test_specs = [
     Spec(
         id="store_true; args=no; default=yes",
         config_args={"action": "store_true", "default": "d"},
-        dict_source=mc.NONE,
+        dict_source=mcp.NONE,
         argparse_source="",
         expected="d",
     ),
@@ -900,7 +906,7 @@ store_false_test_specs = [
     Spec(
         id="store_false; args=no",
         config_args={"action": "store_false"},
-        dict_source=mc.NONE,
+        dict_source=mcp.NONE,
         argparse_source="",
         expected=True,
     ),
@@ -921,7 +927,7 @@ store_false_test_specs = [
     Spec(
         id="store_false; args=no; default=yes",
         config_args={"action": "store_false", "default": "d"},
-        dict_source=mc.NONE,
+        dict_source=mcp.NONE,
         argparse_source="",
         expected="d",
     ),
@@ -934,15 +940,15 @@ nargs_none_actions = ("extend", "store_true", "count")
 nargs_none_with_const_actions = ("store_const",)
 for action, nargs, const in itertools.chain(
     itertools.product(
-        nargs_not0_actions, (mc.NONE, 1, 2, "?", "*", "+"), (mc.NONE,),
+        nargs_not0_actions, (mcp.NONE, 1, 2, "?", "*", "+"), (mcp.NONE,),
     ),
-    ((a, mc.NONE, mc.NONE) for a in nargs_none_actions),
-    ((a, mc.NONE, "c") for a in nargs_none_with_const_actions),
+    ((a, mcp.NONE, mcp.NONE) for a in nargs_none_actions),
+    ((a, mcp.NONE, "c") for a in nargs_none_with_const_actions),
 ):
     extra_config_args = {}
-    if nargs is not mc.NONE:
+    if nargs is not mcp.NONE:
         extra_config_args["nargs"] = nargs
-    if const is not mc.NONE:
+    if const is not mcp.NONE:
         extra_config_args["const"] = const
 
     suppress_test_specs.append(
@@ -953,13 +959,13 @@ for action, nargs, const in itertools.chain(
             ),
             config_args={
                 "action": action,
-                "default": mc.SUPPRESS,
+                "default": mcp.SUPPRESS,
                 **extra_config_args,
             },
-            dict_source=mc.NONE,
+            dict_source=mcp.NONE,
             argparse_source="",
             test_without_source=True,
-            expected=mc.NONE,
+            expected=mcp.NONE,
         )
     )
     suppress_test_specs.append(
@@ -969,11 +975,11 @@ for action, nargs, const in itertools.chain(
                 f"default=none; config_default=suppress"
             ),
             config_args={"action": action, **extra_config_args},
-            config_parser_args={"config_default": mc.SUPPRESS},
-            dict_source=mc.NONE,
+            config_parser_args={"config_default": mcp.SUPPRESS},
+            dict_source=mcp.NONE,
             argparse_source="",
             test_without_source=True,
-            expected=mc.NONE,
+            expected=mcp.NONE,
         )
     )
 test_specs.extend(suppress_test_specs)
@@ -1014,7 +1020,7 @@ for action, type in itertools.product(("store", "append", "extend"), TYPES):
                 "default": expected,
                 "type": type,
             },
-            dict_source=mc.NONE,
+            dict_source=mcp.NONE,
             argparse_source="",
             test_without_source=True,
             expected=Exception,
@@ -1024,7 +1030,7 @@ for action, type in itertools.product(("store", "append", "extend"), TYPES):
         Spec(
             id=f"required; action={action}; nargs=no; args=no; required=yes",
             config_args={"action": action, "required": True, "type": type},
-            dict_source=mc.NONE,
+            dict_source=mcp.NONE,
             argparse_source="",
             test_without_source=True,
             expected=Exception,
@@ -1085,14 +1091,14 @@ def test_spec_with_dict(spec):
 
 
 def _test_spec_with_dict(spec):
-    mc_parser = mc.ConfigParser(**spec.config_parser_args)
-    mc_parser.add_config("c", **spec.config_args)
+    mcp_parser = mcp.ConfigParser(**spec.config_parser_args)
+    mcp_parser.add_config("c", **spec.config_args)
     dict_source = {}
-    if spec.dict_source is not mc.NONE:
+    if spec.dict_source is not mcp.NONE:
         dict_source["c"] = spec.dict_source
-    mc_parser.add_source(mc.DictSource, dict_source)
-    values = mc_parser.parse_config()
-    if spec.expected is mc.NONE:
+    mcp_parser.add_source(mcp.DictSource, dict_source)
+    values = mcp_parser.parse_config()
+    if spec.expected is mcp.NONE:
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
@@ -1111,30 +1117,30 @@ def test_spec_with_env(spec):
 
 
 def _test_spec_with_env(spec):
-    mc_parser = mc.ConfigParser(**spec.config_parser_args)
-    mc_parser.add_config("c", **spec.config_args)
+    mcp_parser = mcp.ConfigParser(**spec.config_parser_args)
+    mcp_parser.add_config("c", **spec.config_args)
     env = {}
-    if spec.dict_source is not mc.NONE:
+    if spec.dict_source is not mcp.NONE:
         if isinstance(spec.dict_source, list):
             env["MULTICONFIG_TEST_C"] = shlex_join(
                 (str(v) for v in spec.dict_source)
             )
         elif (
             spec.dict_source is None
-            or spec.dict_source is mc.PRESENT_WITHOUT_VALUE
+            or spec.dict_source is mcp.PRESENT_WITHOUT_VALUE
         ):
             env["MULTICONFIG_TEST_C"] = ""
         else:
             env["MULTICONFIG_TEST_C"] = shlex.quote(str(spec.dict_source))
-    mc_parser.add_source(
-        mc.EnvironmentSource, env_var_prefix="MULTICONFIG_TEST_",
+    mcp_parser.add_source(
+        mcp.EnvironmentSource, env_var_prefix="MULTICONFIG_TEST_",
     )
     print(f"env={env}")
     with utm.patch.object(os, "environ", env):
-        values = mc_parser.parse_config()
+        values = mcp_parser.parse_config()
     print(f"values={values}")
     print(f"expected={spec.expected}")
-    if spec.expected is mc.NONE:
+    if spec.expected is mcp.NONE:
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
@@ -1153,15 +1159,15 @@ def test_spec_with_json(spec):
 
 
 def _test_spec_with_json(spec):
-    mc_parser = mc.ConfigParser(**spec.config_parser_args)
-    mc_parser.add_config("c", **spec.config_args)
+    mcp_parser = mcp.ConfigParser(**spec.config_parser_args)
+    mcp_parser.add_config("c", **spec.config_args)
     dict_source = {}
-    if spec.dict_source is not mc.NONE:
+    if spec.dict_source is not mcp.NONE:
         dict_source["c"] = spec.dict_source
     fileobj = io.StringIO(json.dumps(dict_source, cls=JsonEncoderWithPath))
-    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
-    values = mc_parser.parse_config()
-    if spec.expected is mc.NONE:
+    mcp_parser.add_source(mcp.JsonSource, fileobj=fileobj)
+    values = mcp_parser.parse_config()
+    if spec.expected is mcp.NONE:
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
@@ -1180,15 +1186,15 @@ def test_spec_with_argparse(spec):
 
 
 def _test_spec_with_argparse(spec):
-    mc_parser = mc.ConfigParser(**spec.config_parser_args)
-    mc_parser.add_config("c", **spec.config_args)
-    mc_parser.add_source(
-        mc.SimpleArgparseSource, argument_parser_class=RaisingArgumentParser
+    mcp_parser = mcp.ConfigParser(**spec.config_parser_args)
+    mcp_parser.add_config("c", **spec.config_args)
+    mcp_parser.add_source(
+        mcp.SimpleArgparseSource, argument_parser_class=RaisingArgumentParser
     )
     argv = ["prog", *spec.argparse_source.split()]
     with utm.patch.object(sys, "argv", argv):
-        values = mc_parser.parse_config()
-    if spec.expected is mc.NONE:
+        values = mcp_parser.parse_config()
+    if spec.expected is mcp.NONE:
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
@@ -1221,21 +1227,21 @@ def _test_spec_against_argparse(spec):
     rap_args = {}
     if "config_default" in spec.config_parser_args:
         config_default = spec.config_parser_args["config_default"]
-        if config_default is mc.SUPPRESS:
+        if config_default is mcp.SUPPRESS:
             rap_args["argument_default"] = argparse.SUPPRESS
-        elif config_default is not mc.NONE:
+        elif config_default is not mcp.NONE:
             rap_args["argument_default"] = config_default
 
     if (
         "default" in spec.config_args
-        and spec.config_args["default"] == mc.SUPPRESS
+        and spec.config_args["default"] == mcp.SUPPRESS
     ):
         spec.config_args["default"] = argparse.SUPPRESS
 
     ap_parser = RaisingArgumentParser(**rap_args)
     ap_parser.add_argument("--c", **spec.config_args)
     ap_values = ap_parser.parse_args(spec.argparse_source.split())
-    if spec.expected is mc.NONE:
+    if spec.expected is mcp.NONE:
         assert not hasattr(ap_values, "c")
     else:
         assert getattr(ap_values, "c") == spec.expected
@@ -1247,90 +1253,90 @@ def _test_spec_against_argparse(spec):
 
 
 def test_simple_argparse_source_with_config_added_after_source():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2", default="v2")
-    mc_parser.add_source(mc.SimpleArgparseSource)
-    mc_parser.add_config("c3")
-    mc_parser.add_config("c4", default="v4")
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", required=True)
+    mcp_parser.add_config("c2", default="v2")
+    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_config("c3")
+    mcp_parser.add_config("c4", default="v4")
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c3 v3".split()):
         with pytest.raises(SystemExit):
-            values = mc_parser.parse_config()
+            values = mcp_parser.parse_config()
     with utm.patch.object(sys, "argv", "prog --c1 v1".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict(
+        values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict(
         {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
 
 
 def test_simple_argparse_source_with_prog():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_source(
-        mc.SimpleArgparseSource,
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_source(
+        mcp.SimpleArgparseSource,
         argument_parser_class=RaisingArgumentParser,
         prog="PROG_TEST",
     )
     with utm.patch.object(sys, "argv", "prog --c1 v1".split()):
         with pytest.raises(ArgparseError, match="PROG_TEST"):
-            mc_parser.parse_config()
+            mcp_parser.parse_config()
 
 
 def test_simple_argparse_source_with_count():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count")
-    mc_parser.add_source(mc.SimpleArgparseSource)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count")
+    mcp_parser.add_source(mcp.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog --c1 --c1".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": 2})
+        values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": 2})
     assert values == expected_values
 
 
 def test_simple_argparse_source_with_count_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count", default=10)
-    mc_parser.add_source(mc.SimpleArgparseSource)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count", default=10)
+    mcp_parser.add_source(mcp.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog --c1 --c1".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": 12})
+        values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": 12})
     assert values == expected_values
 
 
 def test_simple_argparse_source_with_count_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count")
-    mc_parser.add_source(mc.SimpleArgparseSource)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count")
+    mcp_parser.add_source(mcp.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": None})
+        values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": None})
     assert values == expected_values
 
 
 def test_simple_argparse_source_with_count_required_missing():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count", required=True)
-    mc_parser.add_source(mc.SimpleArgparseSource)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count", required=True)
+    mcp_parser.add_source(mcp.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog".split()):
-        with pytest.raises(mc.RequiredConfigNotFoundError):
-            mc_parser.parse_config()
+        with pytest.raises(mcp.RequiredConfigNotFoundError):
+            mcp_parser.parse_config()
 
 
 def test_simple_argparse_source_with_count_required_missing_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count", required=True, default=10)
-    mc_parser.add_source(mc.SimpleArgparseSource)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count", required=True, default=10)
+    mcp_parser.add_source(mcp.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog".split()):
-        with pytest.raises(mc.RequiredConfigNotFoundError):
-            mc_parser.parse_config()
+        with pytest.raises(mcp.RequiredConfigNotFoundError):
+            mcp_parser.parse_config()
 
 
 def test_simple_argparse_source_with_count_missing_with_default():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", action="count", default=10)
-    mc_parser.add_source(mc.SimpleArgparseSource)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count", default=10)
+    mcp_parser.add_source(mcp.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", "prog".split()):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict({"c1": 10})
+        values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": 10})
     assert values == expected_values
 
 
@@ -1340,20 +1346,20 @@ def test_simple_argparse_source_with_count_missing_with_default():
 
 
 def test_json_source_with_config_added_after_source():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", required=True)
-    mc_parser.add_config("c2", default="v2")
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", required=True)
+    mcp_parser.add_config("c2", default="v2")
     fileobj = io.StringIO(
         """{
         "c1": "v1",
         "c3": "v3"
     }"""
     )
-    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
-    mc_parser.add_config("c3")
-    mc_parser.add_config("c4", default="v4")
-    values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict(
+    mcp_parser.add_source(mcp.JsonSource, fileobj=fileobj)
+    mcp_parser.add_config("c3")
+    mcp_parser.add_config("c4", default="v4")
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict(
         {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
@@ -1365,17 +1371,17 @@ def test_json_source_with_config_added_after_source():
 
 
 def test_multiple_sources():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config("c1", type=int, choices=[1, 2], required=True)
-    mc_parser.add_config("c2", type=str, default="v2")
-    mc_parser.add_config("c3", type=pathlib.Path)
-    mc_parser.add_config("c4", type=split_str, default="word1 word2".split())
-    mc_parser.add_config("c5", choices=["v5", "v5a"], required=True)
-    mc_parser.add_config("c6", default="v6")
-    mc_parser.add_config("c7", type=json.loads)
-    mc_parser.add_config("c8", default="v8")
-    mc_parser.add_config("c9", action="append", type=int, default=[0, 1])
-    mc_parser.add_config("c10", action="count", default=10)
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", type=int, choices=[1, 2], required=True)
+    mcp_parser.add_config("c2", type=str, default="v2")
+    mcp_parser.add_config("c3", type=pathlib.Path)
+    mcp_parser.add_config("c4", type=split_str, default="word1 word2".split())
+    mcp_parser.add_config("c5", choices=["v5", "v5a"], required=True)
+    mcp_parser.add_config("c6", default="v6")
+    mcp_parser.add_config("c7", type=json.loads)
+    mcp_parser.add_config("c8", default="v8")
+    mcp_parser.add_config("c9", action="append", type=int, default=[0, 1])
+    mcp_parser.add_config("c10", action="count", default=10)
     fileobj = io.StringIO(
         """{
         "c1": 1,
@@ -1384,14 +1390,14 @@ def test_multiple_sources():
         "c10": null
     }"""
     )
-    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
-    mc_parser.add_source(mc.DictSource, {"c9": 3, "c10": None})
-    mc_parser.add_source(mc.SimpleArgparseSource)
+    mcp_parser.add_source(mcp.JsonSource, fileobj=fileobj)
+    mcp_parser.add_source(mcp.DictSource, {"c9": 3, "c10": None})
+    mcp_parser.add_source(mcp.SimpleArgparseSource)
     with utm.patch.object(
         sys, "argv", "prog --c5 v5 --c7 [1,2] --c9 4 --c10 --c10".split()
     ):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict(
+        values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict(
         {
             "c1": 1,
             "c2": "v2a",
@@ -1409,16 +1415,18 @@ def test_multiple_sources():
 
 
 def test_include_exclude():
-    mc_parser = mc.ConfigParser()
-    mc_parser.add_config(
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config(
         "c1",
         action="append",
-        include_sources=(mc.SimpleArgparseSource, mc.JsonSource),
+        include_sources=(mcp.SimpleArgparseSource, mcp.JsonSource),
     )
-    mc_parser.add_config(
-        "c2", action="append", exclude_sources=(mc.DictSource, mc.JsonSource),
+    mcp_parser.add_config(
+        "c2",
+        action="append",
+        exclude_sources=(mcp.DictSource, mcp.JsonSource),
     )
-    mc_parser.add_config("c3", action="append")
+    mcp_parser.add_config("c3", action="append")
     fileobj = io.StringIO(
         """{
         "c1": "v1_json",
@@ -1426,18 +1434,18 @@ def test_include_exclude():
         "c3": "v3_json"
     }"""
     )
-    mc_parser.add_source(mc.JsonSource, fileobj=fileobj)
+    mcp_parser.add_source(mcp.JsonSource, fileobj=fileobj)
     d = {
         "c1": "v1_dict",
         "c2": "v2_dict",
         "c3": "v3_dict",
     }
-    mc_parser.add_source(mc.DictSource, d)
+    mcp_parser.add_source(mcp.DictSource, d)
     argv = "prog --c1 v1_ap --c2 v2_ap --c3 v3_ap".split()
-    mc_parser.add_source(mc.SimpleArgparseSource)
+    mcp_parser.add_source(mcp.SimpleArgparseSource)
     with utm.patch.object(sys, "argv", argv):
-        values = mc_parser.parse_config()
-    expected_values = mc._namespace_from_dict(
+        values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict(
         {
             "c1": ["v1_json", "v1_ap"],
             "c2": ["v2_ap"],
@@ -1453,22 +1461,22 @@ def test_include_exclude():
 
 
 def test_getattr_or_none():
-    obj = mc.Namespace()
+    obj = mcp.Namespace()
     setattr(obj, "c1", "v1")
     setattr(obj, "c2", None)
-    setattr(obj, "c3", mc.NONE)
-    assert mc._getattr_or_none(obj, "c1") == "v1"
-    assert mc._getattr_or_none(obj, "c2") is None
-    assert mc._getattr_or_none(obj, "c3") is mc.NONE
-    assert mc._getattr_or_none(obj, "c4") is mc.NONE
+    setattr(obj, "c3", mcp.NONE)
+    assert mcp._getattr_or_none(obj, "c1") == "v1"
+    assert mcp._getattr_or_none(obj, "c2") is None
+    assert mcp._getattr_or_none(obj, "c3") is mcp.NONE
+    assert mcp._getattr_or_none(obj, "c4") is mcp.NONE
 
 
 def test_has_nonnone_attr():
-    obj = mc.Namespace()
+    obj = mcp.Namespace()
     setattr(obj, "c1", "v1")
     setattr(obj, "c2", None)
-    setattr(obj, "c3", mc.NONE)
-    assert mc._has_nonnone_attr(obj, "c1")
-    assert mc._has_nonnone_attr(obj, "c2")
-    assert not mc._has_nonnone_attr(obj, "c3")
-    assert not mc._has_nonnone_attr(obj, "c4")
+    setattr(obj, "c3", mcp.NONE)
+    assert mcp._has_nonnone_attr(obj, "c1")
+    assert mcp._has_nonnone_attr(obj, "c2")
+    assert not mcp._has_nonnone_attr(obj, "c3")
+    assert not mcp._has_nonnone_attr(obj, "c4")
