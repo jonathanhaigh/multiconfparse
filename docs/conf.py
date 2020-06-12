@@ -41,6 +41,10 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
+# The version of Sphinx used by readthedocs.io looks for contents.rst by
+# default instead of the index.rst that my local version of Sphinx created.
+# Explicitly tell Sphinx that I'm using index.rst rather than contents.rst.
+master_doc = 'index'
 
 # -- Options for HTML output -------------------------------------------------
 
