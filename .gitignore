@@ -1,5 +1,6 @@
 *.swp
 __pycache__
-multiconfig.egg-info
+*.egg-info
 dist
 build
+_build
