@@ -167,7 +167,7 @@ class Namespace:
 
     .. code-block:: python
 
-        config_values = parser.parse_args()
+        config_values = parser.parse_config()
         config_value = config_values.config_name
 
     To set values (if, for example, you are implementing a :class:`Source`
@@ -286,7 +286,7 @@ class DictSource(Source):
     are:
 
     * ``source_class`` (required, positional):
-      :class:`multiconfig.DictSource`.
+      :class:`multiconfparse.DictSource`.
 
     * ``values_dict`` (required, positional): the :class:`dict` containing
       the config values.
@@ -358,6 +358,74 @@ class DictSource(Source):
 class EnvironmentSource(Source):
     """
     Obtains config values from the environment.
+
+    Do not create :class:`EnvironmentSource` objects directly, add them to a
+    :class:`ConfigParser` object using :meth:`ConfigParser.add_source`. For
+    example:
+
+    .. code-block:: python
+
+        # For demonstration purposes, set some config values in environment
+        # variables
+        os.environ["MY_APP_CONFIG_ITEM1"] = "v1"
+        os.environ["MY_APP_CONFIG_ITEM2"] = "1 2"
+        os.environ["MY_APP_CONFIG_ITEM3"] = ""
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1")
+        parser.add_config("config_item2", nargs=2, type=int)
+        parser.add_config("config_item3", action="store_true")
+
+        parser.add_source(
+            multiconfparse.EnvironmentSource,
+            env_var_prefix="MY_APP_"
+        )
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": "v1",
+        #   "config_item2": [1, 2],
+        #   "config_item3": True,
+        # }
+
+    The arguments of :meth:`ConfigParser.add_source` for
+    :class:`EnvironmentSource` are:
+
+    * ``source_class`` (required, positional):
+      :class:`multiconfparse.EnvironmentSource`.
+
+    * ``none_values`` (optional, keyword): a list of values that, when seen in
+      environment variables, should be treated as if they were not present
+      (i.e.  values for config items with ``nargs == 0`` or ``nargs == "?"``
+      (where the ``const`` value should be used rather than the value from the
+      dict).
+
+      The default ``none_values`` is ``[""]``. using a different value for
+      ``none_values`` is useful you want the empty string to be treated as a
+      valid config value.
+
+    * ``priority`` (optional, keyword): The priority for the
+      :class:`EnvironmentSource`. The default priority for a
+      :class:`EnvironmentSource` is ``10``.
+
+    * ``env_var_prefix`` (optional, keyword): a string prefixed to the
+      environment variable names that :class:`EnvironmentSource` will look for.
+      The default value is ``""``.
+
+    Note that:
+
+    * The name of the environment variable for a config item is the config
+      item's name, converted to upper case, then prefixed with
+      ``env_var_prefix``.
+
+    * Values in environment variables for config items with ``nargs == 0`` or
+      ``nargs == "?"`` (where the ``const`` value should be used rather than
+      the value from the environment variable) should be values from the
+      ``none_values`` list described above.
+
+    * Values in environment variables for config items with ``nargs >= 2``,
+      ``nargs == "+"`` or ``nargs == "*"`` are split into arguments by
+      :func:`shlex.split` (i.e. like arguments given on a command line via a
+      shell). See the :mod:`shlex` documentation for full details.
     """
 
     def __init__(
@@ -401,24 +469,83 @@ class EnvironmentSource(Source):
 
 
 class ArgparseSource(Source):
+    """
+    Obtains config values from an :class:`argparse.ArgumentParser`.
+
+    Do not create :class:`ArgparseSource` objects directly, add them to a
+    :class:`ConfigParser` object using :meth:`ConfigParser.add_source`. For
+    example:
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1")
+        parser.add_config("config_item2", nargs=2, type=int)
+        parser.add_config("config_item3", action="store_true")
+        argparse_source = parser.add_source(multiconfparse.ArgparseSource)
+
+        argparse_parser = argparse.ArgumentParser()
+        argparse_parser.add_argument("arg1")
+        argparse_parser.add_argument("--opt1", type=int, action="append")
+        argparse_source.add_configs_to_argparse_parser(argparse_parser)
+
+        args = argparse_parser.parse_args((
+            "arg1_value --config-item1 v1 --config-item2 1 2 --opt1 opt1_v1 "
+            "--config-item-3 --opt1 opt1_v2"
+        ).split())
+
+        argparse_source.notify_parsed_args(args)
+
+        config_parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": "v1",
+        #   "config_item2": [1, 2],
+        #   "config_item3": True,
+        # }
+
+    :class:`ArgparseSource` does not create an :class:`argparse.ArgumentParser`
+    for you. This is to allow extra command line arguments to be added to an
+    :class:`argparse.ArgumentParser` that are not config items. Instead
+    :class:`ArgparseSource` provides two methods to provide communication with
+    the :class:`argparse.ArgumentParser`:
+
+    .. automethod:: ArgparseSource.add_configs_to_argparse_parser
+        :noindex:
+
+    .. automethod:: ArgparseSource.notify_parsed_args
+        :noindex:
+
+    If you don't need to add command line arguments other than for config
+    items, see :class:`SimpleArgparseSource`.
+
+    The arguments of :meth:`ConfigParser.add_source` for
+    :class:`ArgparseSource` are:
+
+    * ``source_class`` (required, positional):
+      :class:`multiconfparse.ArgparseSource`.
+
+    * ``priority`` (optional, keyword): The priority for the
+      :class:`ArgparseSource`. The default priority for a
+      :class:`ArgparseSource` is ``20``.
+
+    Note that:
+
+    * The name of the command line argument for a config item is the config
+      item's name with underscores (``_``) converted to hyphens (``-``) and
+      prefixed with ``--``.
+    """
+
     def __init__(self, config_specs, priority=20):
-        """
-        Don't call this directly, use ConfigParser.add_source() instead.
-        """
         super().__init__(priority=priority)
         self._config_specs = config_specs
         self._parsed_values = None
 
     def parse_config(self):
-        """
-        Don't call this directly, use ConfigParser.parse_config() instead.
-        """
         return self._parsed_values
 
     def add_configs_to_argparse_parser(self, argparse_parser):
         """
-        Add arguments to an argparse.ArgumentParser object (or an object of a
-        subclass) to obtain config values from the command line.
+        Add arguments to an :class:`argparse.ArgumentParser` for config items.
         """
         for spec in self._config_specs:
             arg_name = self._config_name_to_arg_name(spec.name)
@@ -441,9 +568,8 @@ class ArgparseSource(Source):
 
     def notify_parsed_args(self, argparse_namespace):
         """
-        Call this method with the argparse.Namespace object returned by
-        argparse.ArgumentParser.parse_args() to notify this ArgparseSource
-        object of the results.
+        Notify the :class:`ArgparseSource` of the :class:`argparse.Namespace`
+        object returned by :meth:`argparse.ArgumentParser.parse_args`.
         """
         ns = Namespace()
         for spec in self._config_specs:
@@ -461,30 +587,57 @@ class ArgparseSource(Source):
 
 class SimpleArgparseSource(Source):
     """
-    Obtains config values from the command line using argparse.ArgumentParser.
+    Obtains config values from the command line.
 
-    This class is simpler to use than ArgparseSource but does not allow adding
-    arguments beside those added to the ConfigParser.
+    This class is simpler to use than :class:`ArgparseSource` but does not
+    allow adding arguments that are not config items.
 
     Do not create objects of this class directly - create them via
-    ConfigParser.add_source() instead:
+    :meth:`ConfigParser.add_source` instead. For example:
 
     .. code-block:: python
 
-        parser.add_source(multiconfparse.SimpleArgparseSource, **options)
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1")
+        parser.add_config("config_item2", nargs=2, type=int)
+        parser.add_config("config_item3", action="store_true")
+        parser.add_source(multiconfparse.SimpleArgparseSource)
+        config_parser.parse_config()
+        # If the command line looks something like:
+        #    PROG_NAME --config-item1 v1 --config-item2 1 2 --config-item-3
+        # The result would be:
+        # multiconfparse.Namespace {
+        #   "config_item1": "v1",
+        #   "config_item2": [1, 2],
+        #   "config_item3": True,
+        # }
 
-    Extra options that can be passed to ConfigParser.add_source() for
-    SimpleArgparseSource are:
+    The arguments of :meth:`ConfigParser.add_source` for
+    :class:`ArgparseSource` are:
 
-    * argument_parser_class: a class derived from argparse.ArgumentParser to
-      use instead of ArgumentParser itself. This can be useful if you want to
-      override ArgumentParser's exit() or error() methods.
+    * ``source_class`` (required, positional):
+      :class:`multiconfparse.ArgparseSource`.
 
-    * Extra arguments to pass to ArgumentParser.__init__() (or the __init__()
-      method for the class specified by the 'argument_parser_class' option.
-      E.g.  'prog', 'allow_help'. You probably don't want to use the
-      'argument_default' option though - see ConfigParser.__init__()'s
-      'config_default' option instead.
+    * ``argument_parser_class`` (optional, keyword): a class derived from
+      :class:`argparse.ArgumentParser` to use instead of
+      :class:`ArgumentParser` itself. This can be useful if you want to
+      override :meth:`argparse.ArgumentParser.exit` or
+      :meth:`argparse.ArgumentParser.error`.
+
+    * ``priority`` (optional, keyword): The priority for the
+      :class:`SimpleArgparseSource`. The default priority for a
+      :class:`SimpleArgparseSource` is ``20``.
+
+    * Extra keyword arguments to pass to :class:`argparse.ArgumentParser`.
+      E.g.  ``prog``, ``allow_help``. Don't use the ``argument_default`` option
+      though - :class:`SimpleArgparseSource` sets this internally. See the
+      ``config_default`` option for :class:`ConfigParser` instead.
+
+    Note that:
+
+    * The name of the command line argument for a config item is the config
+      item's name with underscores (``_``) converted to hyphens (``-``) and
+      prefixed with ``--``.
     """
 
     def __init__(
@@ -494,9 +647,6 @@ class SimpleArgparseSource(Source):
         priority=20,
         **kwargs,
     ):
-        """
-        Don't call this directly, use ConfigParser.add_source() instead.
-        """
         super().__init__(priority=priority)
         self._argparse_source = ArgparseSource(config_specs)
         self._argparse_parser = argument_parser_class(**kwargs)
@@ -505,9 +655,6 @@ class SimpleArgparseSource(Source):
         )
 
     def parse_config(self):
-        """
-        Don't call this directly, use ConfigParser.parse_config() instead.
-        """
         self._argparse_source.notify_parsed_args(
             self._argparse_parser.parse_args()
         )
@@ -519,18 +666,77 @@ class JsonSource(Source):
     Obtains config values from a JSON file.
 
     Do not create objects of this class directly - create them via
-    ConfigParser.add_source() instead:
+    :meth:`ConfigParser.add_source`. For example:
 
     .. code-block:: python
 
-        config_parser.add_source(multiconfparse.JsonSource, **options)
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1")
+        parser.add_config("config_item2", nargs=2, type=int)
+        parser.add_config("config_item3", action="store_true")
 
-    Extra options that can be passed to ConfigParser.add_source() for
-    JsonSource are:
-    * path: path to the JSON file to parse.
-    * fileobj: a file object representing a stream of JSON data.
+        fileobj = io.StringIO('''
+            {
+                "config_item1": "v1",
+                "config_item2": [1, 2],
+                "config_item3": null
+            }
+        ''')
+        parser.add_source(multiconfparse.JsonSource, fileobj=fileobj)
 
-    Note: exactly one of the 'path' and 'fileobj' options must be given.
+        config_parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": "v1",
+        #   "config_item2": [1, 2],
+        #   "config_item3": True,
+        # }
+
+    The arguments of :meth:`ConfigParser.add_source` for
+    :class:`JsonSource` are:
+
+    * ``source_class`` (required, positional):
+      :class:`multiconfparse.JsonSource`.
+
+    * ``priority`` (optional, keyword): The priority for the
+      :class:`JsonSource`. The default priority for a :class:`JsonSource` is
+      ``0``.
+
+    * ``path`` (optional, keyword): path to the JSON file to parse. Exactly one
+      of the ``path`` and ``fileobj`` options must be given.
+
+    * ``fileobj`` (optional keyword): a file object representing a stream of
+      JSON data. Exactly one of the ``path`` and ``fileobj`` options must be
+      given.
+
+    * ``none_values`` (optional, keyword): a list of python values that, when
+      seen as config item values after JSON decoding, should be treated as if
+      they were not present (i.e.  values for config items with ``nargs == 0``
+      or ``nargs == "?"`` (where the ``const`` value should be used rather than
+      the value from the dict). The default ``none_values`` is ``[]``.
+
+    * ``json_none_values`` (optional, keyword): a list of JSON values (as
+      strings) that are decoded into Python values and added to
+      ``none_values``.  The default ``json_none_values`` is ``["null"]``.
+
+    Notes:
+
+    * The data in the JSON file should be a JSON object. Each config item value
+      should be assigned to a field of the object that has the same name as the
+      config item.
+
+    * Fields in the JSON object for config items with ``nargs == 0`` or
+      ``nargs == "?"`` (where the ``const`` value should be used rather than
+      the value from the dict) should either have values from the
+      ``json_none_values`` list or should decode to values in the
+      ``none_values`` list.
+
+    * Fields in the JSON object for config items with ``nargs >= 2``,
+      ``nargs == "+"`` or ``nargs == "*"`` should be JSON arrays with an
+      element for each argument of the config item.
+
+      In the special case where ``nargs == "+"`` or ``nargs == "*"`` and
+      there is a single argument for the config item, the value may be given
+      without the enclosing JSON array, unless the argument is itself an array.
     """
 
     def __init__(
@@ -542,9 +748,6 @@ class JsonSource(Source):
         json_none_values=None,
         priority=0,
     ):
-        """
-        Don't call this directly, use ConfigParser.add_source() instead.
-        """
         super().__init__(priority=priority)
         if path and fileobj:
             raise ValueError(
@@ -566,9 +769,6 @@ class JsonSource(Source):
         )
 
     def parse_config(self):
-        """
-        Don't call this directly, use ConfigParser.parse_config() instead.
-        """
         return self._dict_source.parse_config()
 
     @staticmethod
@@ -625,9 +825,6 @@ class _ConfigSpec(abc.ABC):
         include_sources=None,
         exclude_sources=None,
     ):
-        """
-        Don't call this directly - use create() instead.
-        """
         self._set_name(name)
         self._set_nargs(nargs)
         self._set_type(type)
@@ -934,7 +1131,7 @@ class ConfigParser:
 
     def add_config(self, name, **kwargs):
         """
-        Add a config item to this ConfigParser.
+        Add a config item to the ConfigParser.
         """
         if "default" not in kwargs and self._global_default is not NOT_GIVEN:
             kwargs["default"] = self._global_default
@@ -944,7 +1141,9 @@ class ConfigParser:
 
     def add_source(self, source_class, *args, **kwargs):
         """
-        Add a config source to this ConfigParser.
+        Add a new config source to the ConfigParser.
+
+        Return the created config source object.
         """
         source = source_class(copy.copy(self._config_specs), *args, **kwargs)
         self._sources.append(source)
