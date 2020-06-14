@@ -780,9 +780,112 @@ class JsonSource(Source):
             return json.load(fileobj)
 
 
-class _ConfigSpec(abc.ABC):
+class ConfigSpec(abc.ABC):
     """
-    Base class for config specifications.
+    Abstract base class for config specifications.
+
+    Classes to support actions should:
+
+    * Inherit from :class:`ConfigSpec`.
+
+    * Implement the :meth:`accumulate_processed_value` method:
+
+      .. automethod:: accumulate_processed_value
+        :noindex:
+
+      For example, the :meth:`accumulate_processed_value` method for the
+      "append" action is:
+
+      .. code-block:: python
+
+        def accumulate_processed_value(self, current, new):
+            assert new is not NOT_GIVEN
+            if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
+                new = self.const
+            if current is NOT_GIVEN:
+                return [new]
+            return current + [new]
+
+    * Have an ``action`` class attribute set to the name of the action that the
+      class implements.
+
+    * Have an ``__init__()`` method that accepts arguments passed to
+      :meth:`ConfigParser.add_config` calls by the user (except the ``action``
+      argument) and which calls :meth:`ConfigSpec.__init__` with any of those
+      arguments which are not specific to the action handled by the class.
+      I.e.:
+
+        * ``name``;
+
+        * ``nargs``;
+
+        * ``type``;
+
+        * ``required``;
+
+        * ``default``;
+
+        * ``choices``;
+
+        * ``help``;
+
+        * ``include_sources``;
+
+        * ``exclude_sources``.
+
+      These arguments will be assigned to attributes of the :class:`ConfigSpec`
+      object being created (perhaps after some processing or validation) that
+      are available for access by subclasses. The names of the attributes are
+      the same as the argument names.
+
+      It is recommended that passing the arguments to
+      :meth:`ConfigSpec.__init__` is done by the subclass ``__init__`` method
+      accepting a ``**kwargs`` argument to collect any arguments that are not
+      used or modified by the action class, then passing that ``**kwargs``
+      argument to :meth:`ConfigSpec.__init__`. The action class may also want
+      pass some arguments that aren't specified by the user if the value of
+      those arguments is implied by the action. For example, the
+      ``store_const`` action class has the following ``__init__`` method:
+
+      .. code-block:: python
+
+        def __init__(self, const, **kwargs):
+            super().__init__(
+                nargs=0,
+                type=mentioned_without_value,
+                required=False,
+                choices=None,
+                **kwargs,
+            )
+            self.const = const
+
+      This ensures that an exception is raised if the user specifies ``nargs``,
+      ``type``, ``required``, or ``choices`` arguments when adding a
+      ``store_const`` action because if the user specifies those arguments they
+      will be given twice in the call to :meth:`ConfigSpec.__init__`.
+
+
+    The full example of the class for the ``store_const`` action is:
+
+    .. code-block:: python
+
+        class _StoreConstConfigSpec(ConfigSpec):
+            action = "store_const"
+
+            def __init__(self, const, **kwargs):
+                super().__init__(
+                    nargs=0,
+                    type=mentioned_without_value,
+                    required=False,
+                    choices=None,
+                    **kwargs,
+                )
+                self.const = const
+
+            def accumulate_processed_value(self, current, new):
+                assert new is MENTIONED_WITHOUT_VALUE
+                return self.const
+
     """
 
     # Dict of subclasses that handle specific actions. The name of the action
@@ -790,21 +893,17 @@ class _ConfigSpec(abc.ABC):
     _subclasses = {}
 
     def __init_subclass__(cls, **kwargs):
-        """
-        Automatically register subclasses specialized to handle a particular
-        action. For a subclass to be registered it must have the name of the
-        action it handles in an 'action' class attribute.
-        """
+        # Automatically register subclasses specialized to handle a particular
+        # action. For a subclass to be registered it must have the name of the
+        # action it handles in an 'action' class attribute.
         super().__init_subclass__(**kwargs)
         if hasattr(cls, "action"):
             cls._subclasses[cls.action] = cls
 
     @classmethod
     def create(cls, action="store", **kwargs):
-        """
-        Factory to obtain _ConfigSpec objects with the correct subclass to
-        handle the given action.
-        """
+        # Factory to obtain ConfigSpec objects with the correct subclass to
+        # handle the given action.
         if action == "append_const":
             raise NotImplementedError(
                 f"action '{action}' has not been implemented"
@@ -840,45 +939,36 @@ class _ConfigSpec(abc.ABC):
             )
 
     def accumulate_raw_value(self, current, raw_new):
-        """
-        Combine a new raw value for this config with any existing value.
-
-        Args:
-        * current: The current value for this config item (which may be
-          NOT_GIVEN).
-        * raw_new: The new value to combine with the current value for this
-          config item. The value has not already been coerced to the config's
-          type.
-
-        Returns: the new combined value.
-        """
-        return self._accumulate_processed_value(
+        return self.accumulate_processed_value(
             current, self._process_value(raw_new)
         )
 
     @abc.abstractmethod
-    def _accumulate_processed_value(self, current, new):
+    def accumulate_processed_value(self, current, new):
         """
         Combine a new processed value for this config with any existing value.
 
         This method must be implemented by subclasses.
 
-        Args:
-        * current: The current value for this config item (which may be
-          NOT_GIVEN).
-        * new: The new value to combine with the current value for this config
-          item.
+        Arguments:
 
-        The new value will have:
-        * been coerced to the config's type;
-        * checked for nargs and choices validity;
-        * had values for nargs==1 converted to a single element list.
+        * ``current``: the current value for this config item (which may be
+          :const:`NOT_GIVEN` or :const:`MENTIONED_WITHOUT_VALUE`).
 
-        The new value will not have:
-        * had any processing for values;
-        * had any processing for const arguments.
+        * ``new``: The new value (which will never be :const:`NOT_GIVEN` but
+          may be :const:`MENTIONED_WITHOUT_VALUE`) to combine with the current
+          value for the config item.
 
-        Returns: the new combined value.
+        The ``current`` and ``new`` will have:
+
+        * been coerced to the config item's ``type``;
+
+        * been checked for ``nargs`` and ``choices`` validity;
+
+        * had values for ``nargs == 1`` converted to a single element
+          :class:`list`.
+
+        Returns: the new combined value, which must not be :const:`NOT_GIVEN`.
         """
 
     def _set_name(self, name):
@@ -898,11 +988,6 @@ class _ConfigSpec(abc.ABC):
             raise ValueError(f"invalid nargs value {nargs}")
 
     def _set_type(self, type):
-        """
-        Validate and set the type of this config item.
-
-        This is a default implementation that may be called by subclasses.
-        """
         if not callable(type):
             raise TypeError("'type' argument must be callable")
         self.type = type
@@ -944,26 +1029,14 @@ class _ConfigSpec(abc.ABC):
             self._validate_choice(v)
 
 
-class _ConfigSpecWithChoices(_ConfigSpec):
-    def __init__(self, choices=None, **kwargs):
-        """
-        Do not call this directly - use _ConfigItem.create() instead.
-        """
-        super().__init__(**kwargs)
-        self.choices = choices
-
-
-class _StoreConfigSpec(_ConfigSpecWithChoices):
+class _StoreConfigSpec(ConfigSpec):
     action = "store"
 
     def __init__(self, const=None, **kwargs):
-        """
-        Do not call this directly - use _ConfigItem.create() instead.
-        """
         super().__init__(**kwargs)
         self._set_const(const)
 
-    def _accumulate_processed_value(self, current, new):
+    def accumulate_processed_value(self, current, new):
         assert new is not NOT_GIVEN
         if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
             return self.const
@@ -985,19 +1058,20 @@ class _StoreConfigSpec(_ConfigSpecWithChoices):
         self.const = const
 
 
-class _StoreConstConfigSpec(_ConfigSpec):
+class _StoreConstConfigSpec(ConfigSpec):
     action = "store_const"
 
     def __init__(self, const, **kwargs):
-        """
-        Do not call this directly - use _ConfigItem.create() instead.
-        """
         super().__init__(
-            nargs=0, type=mentioned_without_value, required=False, **kwargs
+            nargs=0,
+            type=mentioned_without_value,
+            required=False,
+            choices=None,
+            **kwargs,
         )
         self.const = const
 
-    def _accumulate_processed_value(self, current, new):
+    def accumulate_processed_value(self, current, new):
         assert new is MENTIONED_WITHOUT_VALUE
         return self.const
 
@@ -1006,9 +1080,6 @@ class _StoreTrueConfigSpec(_StoreConstConfigSpec):
     action = "store_true"
 
     def __init__(self, default=False, **kwargs):
-        """
-        Do not call this directly - use _ConfigItem.create() instead.
-        """
         super().__init__(const=True, default=default, **kwargs)
 
 
@@ -1016,23 +1087,17 @@ class _StoreFalseConfigSpec(_StoreConstConfigSpec):
     action = "store_false"
 
     def __init__(self, default=True, **kwargs):
-        """
-        Do not call this directly - use _ConfigItem.create() instead.
-        """
         super().__init__(const=False, default=default, **kwargs)
 
 
-class _AppendConfigSpec(_ConfigSpecWithChoices):
+class _AppendConfigSpec(ConfigSpec):
     action = "append"
 
     def __init__(self, const=None, **kwargs):
-        """
-        Do not call this directly - use _ConfigItem.create() instead.
-        """
         super().__init__(**kwargs)
         self._set_const(const)
 
-    def _accumulate_processed_value(self, current, new):
+    def accumulate_processed_value(self, current, new):
         assert new is not NOT_GIVEN
         if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
             new = self.const
@@ -1056,18 +1121,17 @@ class _AppendConfigSpec(_ConfigSpecWithChoices):
         self.const = const
 
 
-class _CountConfigSpec(_ConfigSpec):
+class _CountConfigSpec(ConfigSpec):
     action = "count"
 
     def __init__(
         self, **kwargs,
     ):
-        """
-        Do not call this directly - use _ConfigItem.create() instead.
-        """
-        super().__init__(nargs=0, type=mentioned_without_value, **kwargs)
+        super().__init__(
+            nargs=0, type=mentioned_without_value, choices=None, **kwargs
+        )
 
-    def _accumulate_processed_value(self, current, new):
+    def accumulate_processed_value(self, current, new):
         assert new is MENTIONED_WITHOUT_VALUE
         if current is NOT_GIVEN:
             return 1
@@ -1078,14 +1142,11 @@ class _ExtendConfigSpec(_AppendConfigSpec):
     action = "extend"
 
     def __init__(self, **kwargs):
-        """
-        Do not call this directly - use _ConfigItem.create() instead.
-        """
         if "nargs" not in kwargs:
             kwargs["nargs"] = "+"
         super().__init__(**kwargs)
 
-    def _accumulate_processed_value(self, current, new):
+    def accumulate_processed_value(self, current, new):
         assert new is not NOT_GIVEN
         if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
             new = self.const
@@ -1135,7 +1196,7 @@ class ConfigParser:
         """
         if "default" not in kwargs and self._global_default is not NOT_GIVEN:
             kwargs["default"] = self._global_default
-        spec = _ConfigSpec.create(name=name, **kwargs)
+        spec = ConfigSpec.create(name=name, **kwargs)
         self._config_specs.append(spec)
         return spec
 
