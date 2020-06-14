@@ -17,6 +17,7 @@ and various config file formats. The API is very similar to the Argparse_ API.
 
    Installation
    Quick start <Quick_start>
+   Creating a parser <Creating_a_parser>
    API reference <API_reference>
 
 Indices and tables

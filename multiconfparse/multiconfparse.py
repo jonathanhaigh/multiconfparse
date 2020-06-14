@@ -98,31 +98,58 @@ class _SuppressAttributeCreation:
     __repr__ = __str__
 
 
+#: Singleton used as a ``default`` value for a config item to indicate that if
+#: no value is found for the config item in any source, it should not be given
+#: an attribute in the :class:`Namespace` returned by
+#: :meth:`ConfigParser.parse_config`. The default behaviour (when a
+#: ``default`` value is not given by the user) is for the :class:`Namespace`
+#: returned by :meth:`ConfigParser.parse_config` to have an attribute with a
+#: value of :const:`None`.
 SUPPRESS = _SuppressAttributeCreation()
 
 
-class _None:
+class _NotGiven:
     def __str__(self):
-        return "NONE"
+        return "NOT_GIVEN"
 
     __repr__ = __str__
 
 
-NONE = _None()
+#: Singleton used to represent that an option or config item is not present.
+#:
+#: This is used rather than :const:`None` to distinguish between:
+#:
+#: * the case where the user has provided an option with the value :const:None`
+#:   and the user has not provided an option at all;
+#:
+#: * the case where a config item has the value :const:`None` and the case
+#:   where the config item not been mentioned at all in the config. Contrast
+#:   this with :const:`MENTIONED_WITHOUT_VALUE` which represents a config
+#:   item that has been mentioned in the config but does not have a value (e.g.
+#:   for a config item with ``nargs == 0``).
+NOT_GIVEN = _NotGiven()
 
 
-class _PresentWithoutValue:
+class _MentionedWithoutValue:
     def __str__(self):
-        return "PRESENT_WITHOUT_VALUE"
+        return "MENTIONED_WITHOUT_VALUE"
 
     __repr__ = __str__
 
 
-PRESENT_WITHOUT_VALUE = _PresentWithoutValue()
+#: Singleton used to represent that a config item has been mentioned in a
+#: config source but does not have a value.
+#:
+#: This is used rather than :const:`None` to distinguish between: the case
+#: where a config item has the value :const:`None` and the case where the
+#: config item does not have a value at all (e.g. for a config item with
+#: ``nargs == 0``. Contrast this with :const:`NOT_GIVEN` which represents a
+# config item that has not been mentioned in the config at all.
+MENTIONED_WITHOUT_VALUE = _MentionedWithoutValue()
 
 
-def present_without_value(v):
-    return PRESENT_WITHOUT_VALUE
+def mentioned_without_value(v):
+    return MENTIONED_WITHOUT_VALUE
 
 
 # ------------------------------------------------------------------------------
@@ -131,6 +158,27 @@ def present_without_value(v):
 
 
 class Namespace:
+    """
+    An object to hold values of config items.
+
+    :class:`Namespace` objects are essentially plain objects used as the return
+    values of :meth:`ConfigParser.parse_config`. Retrieve values with normal
+    attribute accesses:
+
+    .. code-block:: python
+
+        config_values = parser.parse_args()
+        config_value = config_values.config_name
+
+    To set values (if, for example, you are implementing a :class:`Source`
+    subclass), use ``setattr``:
+
+    .. code-block:: python
+
+        ns = multiconfparse.Namespace()
+        setattr(ns, config_name, config_value)
+    """
+
     def __str__(self):
         return str(vars(self))
 
@@ -142,7 +190,10 @@ class Namespace:
 
 class Source(abc.ABC):
     """
-    ABC for Source classes.
+    Abstract base for classes that parse config sources.
+
+    All config source classes should inherit from :class:`Source` and provide
+    an implementation for its :meth:`parse_config` method.
     """
 
     def __init__(self, priority=0):
@@ -151,35 +202,134 @@ class Source(abc.ABC):
     @abc.abstractmethod
     def parse_config(self):
         """
-        Parse this config source.
+        Read the values of config items for this source.
 
-        Returns: a multiconfparse.Namespace object containing the values parsed
-        from this config source.
+        This is an abstract method that subclasses must implement to return a
+        :class:`Namespace` object where:
 
-        The values should *not* be coerced to the type specified by their
-        _ConfigSpec.
+        * The returned :class:`Namespace` has an attribute for each config item
+          found. The name of the attribute for a config item must be the config
+          item's ``name`` as specified by the ``name`` attribute of its
+          :class:`ConfigSpec`.
 
-        Subclasses must implement this method.
+        * The value for each attribute is a list, where each element of the
+          list is a value given for the config item in the source. The elements
+          should be ordered so that values appearing earlier in the source are
+          earlier in the list. In the common case where only a single value for
+          the config item is given in the source, the attribute's value should
+          be a list with a single element.
+
+          For example, if ``config_item1`` is mentioned in the source once with
+          value ``"v1"`` and ``config_item2`` is mentioned in the source twice
+          with values ``"v2"`` and then ``"v3"``, the returned
+          :class:`Namespace` object would have an attribute ``config_item1``
+          with value ``["v1"]`` and an attribute ``config_item2`` with value
+          ``["v2", "v3"]``.
+
+        * If a config item with ``nargs == 0`` or ``nargs == "?"`` is mentioned
+          in the source without a value (or possibly with a source-specific
+          value that means ``None``/``null`` for sources where a value must
+          always be given for a config item), the value for that mention of the
+          config item should be given in the list of values as
+          ``MENTIONED_WITHOUT_VALUE``.
+
+        * If a config item with ``nargs == None``, ``nargs == 1`` or
+          ``nargs == "?"`` is mentioned in the source with a value, the value
+          for that mention of the config item should be given in the list of
+          values as the value itself.
+
+        * If a config item with ``nargs >= 2`` , ``nargs == "*"`` or
+          ``nargs == "+"`` is mentioned in the source, the value for that
+          mention of the config item should be given in the list of values as a
+          list of the values/arguments given in that mention.
+
+          For example, if a config item ``config_item1`` with ``nargs == 2``
+          appears in the source first with values/arguments of ``"v1a"`` and
+          ``"v1b"`` and then again with values/arguments of ``"v2a"`` and
+          ``"v2b"``, the ``config_item1`` attribute in the :class:`Namespace`
+          should have a value of ``[["v1a", "v1b"], ["v2a", "v2b"]]``.
+
+        * None of the values returned should yet have been coerced into the
+          types specified by the user in :meth:`ConfigParser.add_config`.
         """
 
 
 class DictSource(Source):
     """
-    Obtains config values from a dict.
+    Obtains config values from a Python :class:`dict` object.
 
-    Do not create objects of this class directly - create them via
-    ConfigParser.add_source() instead:
-    config_parser.add_source(multiconfparse.DictSource, {"some": "dict"})
+    Do not create :class:`DictSource` objects directly, add them to a
+    :class:`ConfigParser` object using :meth:`ConfigParser.add_source`. For
+    example:
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1")
+        parser.add_config("config_item2", nargs=2, type=int)
+        parser.add_config("config_item3", action="store_true")
+
+        values_dict = {
+            "config_item1": "v1",
+            "config_item2": [1, 2],
+            "config_item3": None,
+        }
+        parser.add_source(multiconfparse.DictSource, values_dict)
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": "v1",
+        #   "config_item2": [1, 2],
+        #   "config_item3": True,
+        # }
+
+    The arguments of :meth:`ConfigParser.add_source` for :class:`DictSource`
+    are:
+
+    * ``source_class`` (required, positional):
+      :class:`multiconfig.DictSource`.
+
+    * ``values_dict`` (required, positional): the :class:`dict` containing
+      the config values.
+
+      Note that:
+
+      * Values in ``values_dict`` for config items with ``nargs == 0`` or
+        ``nargs == "?"`` (where the ``const`` value should be used rather than
+        the value from the dict) should be values from the ``none_values`` list
+        described below.
+
+      * Values in ``values_dict`` for config items with ``nargs >= 2``,
+        ``nargs == "+"`` or ``nargs == "*"`` should be :class:`list` objects
+        with an element for each argument of the config item.
+
+        In the special case where ``nargs == "+"`` or ``nargs == "*"`` and
+        there is a single argument for the config item, the value may be given
+        without the enclosing :class:`list`, unless the argument is itself a
+        :class:`list`.
+
+    * ``none_values`` (optional, keyword): a list of values that, when seen in
+      ``values_dict``, should be treated as if they were not present (i.e.
+      values for config items with ``nargs == 0`` or ``nargs == "?"`` (where
+      the ``const`` value should be used rather than the value from the dict).
+
+      The default ``none_values`` is
+      ``[None, multiconfparse.MENTIONED_WITHOUT_VALUE]``. using
+      ``none_values=[multiconfparse.MENTIONED_WITHOUT_VALUE]`` is useful if
+      you want :const:`None` to be treated as a valid config value.
+
+    * ``priority`` (optional, keyword): The priority for the
+      :class:`DictSource`. The default priority for a :class:`DictSource`
+      is ``0``.
     """
 
     def __init__(
-        self, config_specs, d, none_values=None, priority=0,
+        self, config_specs, values_dict, none_values=None, priority=0,
     ):
         super().__init__(priority=priority)
         self._config_specs = config_specs
-        self._dict = d
+        self._dict = values_dict
         if none_values is None:
-            none_values = [None, PRESENT_WITHOUT_VALUE]
+            none_values = [None, MENTIONED_WITHOUT_VALUE]
         self._none_values = none_values
 
     def parse_config(self):
@@ -189,7 +339,7 @@ class DictSource(Source):
                 continue
             value = self._dict[spec.name]
             if spec.nargs == "?" and value in self._none_values:
-                value = PRESENT_WITHOUT_VALUE
+                value = MENTIONED_WITHOUT_VALUE
             if spec.nargs == "*":
                 if value in self._none_values:
                     value = []
@@ -200,7 +350,7 @@ class DictSource(Source):
             if spec.nargs == 0:
                 if value not in self._none_values:
                     raise InvalidValueForNargs0Error(value, self._none_values)
-                value = PRESENT_WITHOUT_VALUE
+                value = MENTIONED_WITHOUT_VALUE
             setattr(ns, spec.name, [value])
         return ns
 
@@ -208,10 +358,6 @@ class DictSource(Source):
 class EnvironmentSource(Source):
     """
     Obtains config values from the environment.
-
-    Do not create objects of this class directly - create them via
-    ConfigParser.add_source() instead:
-    config_parser.add_source(multiconfparse.EnvironmentSource)
     """
 
     def __init__(
@@ -233,7 +379,7 @@ class EnvironmentSource(Source):
                 continue
             value = os.environ[env_name]
             if spec.nargs == "?" and value in self._none_values:
-                value = PRESENT_WITHOUT_VALUE
+                value = MENTIONED_WITHOUT_VALUE
             elif spec.nargs == "*":
                 if value in self._none_values:
                     value = []
@@ -244,7 +390,7 @@ class EnvironmentSource(Source):
             elif spec.nargs == 0:
                 if value not in self._none_values:
                     raise InvalidValueForNargs0Error(value, self._none_values)
-                value = PRESENT_WITHOUT_VALUE
+                value = MENTIONED_WITHOUT_VALUE
             elif isinstance(spec.nargs, int) and spec.nargs > 1:
                 value = shlex.split(value)
             setattr(ns, spec.name, [value])
@@ -289,7 +435,7 @@ class ArgparseSource(Source):
                 kwargs["nargs"] = spec.nargs
 
             if spec.nargs in ("?", 0):
-                kwargs["const"] = PRESENT_WITHOUT_VALUE
+                kwargs["const"] = MENTIONED_WITHOUT_VALUE
 
             argparse_parser.add_argument(arg_name, **kwargs)
 
@@ -322,10 +468,14 @@ class SimpleArgparseSource(Source):
 
     Do not create objects of this class directly - create them via
     ConfigParser.add_source() instead:
-    config_parser.add_source(multiconfparse.SimpleArgparseSource, **options)
+
+    .. code-block:: python
+
+        parser.add_source(multiconfparse.SimpleArgparseSource, **options)
 
     Extra options that can be passed to ConfigParser.add_source() for
     SimpleArgparseSource are:
+
     * argument_parser_class: a class derived from argparse.ArgumentParser to
       use instead of ArgumentParser itself. This can be useful if you want to
       override ArgumentParser's exit() or error() methods.
@@ -370,7 +520,10 @@ class JsonSource(Source):
 
     Do not create objects of this class directly - create them via
     ConfigParser.add_source() instead:
-    config_parser.add_source(multiconfparse.JsonSource, **options)
+
+    .. code-block:: python
+
+        config_parser.add_source(multiconfparse.JsonSource, **options)
 
     Extra options that can be passed to ConfigParser.add_source() for
     JsonSource are:
@@ -404,10 +557,10 @@ class JsonSource(Source):
         if json_none_values is None:
             json_none_values = ["null"]
 
-        d = self._get_json(path, fileobj)
+        values_dict = self._get_json(path, fileobj)
         self._dict_source = DictSource(
             config_specs,
-            d,
+            values_dict,
             none_values=[json.loads(v) for v in json_none_values]
             + none_values,
         )
@@ -466,7 +619,7 @@ class _ConfigSpec(abc.ABC):
         nargs=None,
         type=str,
         required=False,
-        default=NONE,
+        default=NOT_GIVEN,
         choices=None,
         help=None,
         include_sources=None,
@@ -494,7 +647,8 @@ class _ConfigSpec(abc.ABC):
         Combine a new raw value for this config with any existing value.
 
         Args:
-        * current: The current value for this config item (which may be NONE).
+        * current: The current value for this config item (which may be
+          NOT_GIVEN).
         * raw_new: The new value to combine with the current value for this
           config item. The value has not already been coerced to the config's
           type.
@@ -513,7 +667,8 @@ class _ConfigSpec(abc.ABC):
         This method must be implemented by subclasses.
 
         Args:
-        * current: The current value for this config item (which may be NONE).
+        * current: The current value for this config item (which may be
+          NOT_GIVEN).
         * new: The new value to combine with the current value for this config
           item.
 
@@ -556,16 +711,16 @@ class _ConfigSpec(abc.ABC):
         self.type = type
 
     def _process_value(self, value):
-        assert value is not NONE
+        assert value is not NOT_GIVEN
         if self.nargs == 0:
-            assert value is PRESENT_WITHOUT_VALUE
+            assert value is MENTIONED_WITHOUT_VALUE
             return value
         if self.nargs is None:
             new = self.type(value)
             self._validate_choice(new)
             return new
         if self.nargs == "?":
-            if value is PRESENT_WITHOUT_VALUE:
+            if value is MENTIONED_WITHOUT_VALUE:
                 return value
             else:
                 new = self.type(value)
@@ -612,8 +767,8 @@ class _StoreConfigSpec(_ConfigSpecWithChoices):
         self._set_const(const)
 
     def _accumulate_processed_value(self, current, new):
-        assert new is not NONE
-        if self.nargs == "?" and new is PRESENT_WITHOUT_VALUE:
+        assert new is not NOT_GIVEN
+        if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
             return self.const
         return new
 
@@ -641,12 +796,12 @@ class _StoreConstConfigSpec(_ConfigSpec):
         Do not call this directly - use _ConfigItem.create() instead.
         """
         super().__init__(
-            nargs=0, type=present_without_value, required=False, **kwargs
+            nargs=0, type=mentioned_without_value, required=False, **kwargs
         )
         self.const = const
 
     def _accumulate_processed_value(self, current, new):
-        assert new is PRESENT_WITHOUT_VALUE
+        assert new is MENTIONED_WITHOUT_VALUE
         return self.const
 
 
@@ -681,10 +836,10 @@ class _AppendConfigSpec(_ConfigSpecWithChoices):
         self._set_const(const)
 
     def _accumulate_processed_value(self, current, new):
-        assert new is not NONE
-        if self.nargs == "?" and new is PRESENT_WITHOUT_VALUE:
+        assert new is not NOT_GIVEN
+        if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
             new = self.const
-        if current is NONE:
+        if current is NOT_GIVEN:
             return [new]
         return current + [new]
 
@@ -713,11 +868,11 @@ class _CountConfigSpec(_ConfigSpec):
         """
         Do not call this directly - use _ConfigItem.create() instead.
         """
-        super().__init__(nargs=0, type=present_without_value, **kwargs)
+        super().__init__(nargs=0, type=mentioned_without_value, **kwargs)
 
     def _accumulate_processed_value(self, current, new):
-        assert new is PRESENT_WITHOUT_VALUE
-        if current is NONE:
+        assert new is MENTIONED_WITHOUT_VALUE
+        if current is NOT_GIVEN:
             return 1
         return current + 1
 
@@ -734,17 +889,33 @@ class _ExtendConfigSpec(_AppendConfigSpec):
         super().__init__(**kwargs)
 
     def _accumulate_processed_value(self, current, new):
-        assert new is not NONE
-        if self.nargs == "?" and new is PRESENT_WITHOUT_VALUE:
+        assert new is not NOT_GIVEN
+        if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
             new = self.const
         if not isinstance(new, list):
             new = [new]
-        if current is NONE:
+        if current is NOT_GIVEN:
             return new
         return current + new
 
 
 class ConfigParser:
+    """
+    Create a new ConfigParser object. Options are:
+
+    * ``config_default``: the default value to use in the :class:`Namespace`
+      returned by :meth:`parse_config` for config items for which no value was
+      found.
+
+      The default behaviour (when ``config_default`` is
+      :const:`NOT_GIVEN`) is to represent these config items with the
+      value ``None``.
+
+      Set ``config_default`` to :const:`SUPPRESS` to prevent
+      these configs from having an attribute set in the :class:`Namespace` at
+      all.
+    """
+
     class ValueWithPriority:
         def __init__(self, value, priority):
             self.value = value
@@ -755,18 +926,7 @@ class ConfigParser:
 
         __repr__ = __str__
 
-    def __init__(self, config_default=NONE):
-        """
-        Create a ConfigParser object.
-
-        Args:
-        * config_default: the value to use in the multiconfparse.Namespace
-          returned by parse_config() for config items for which a value was not
-          found in any config source. The default behaviour is to represent
-          these config items with None. Set config_default to
-          multiconfparse.SUPPRESS to prevent these configs from having an
-          attribute set in the Namespace at all.
-        """
+    def __init__(self, config_default=NOT_GIVEN):
         self._config_specs = []
         self._sources = []
         self._parsed_values = {}
@@ -776,7 +936,7 @@ class ConfigParser:
         """
         Add a config item to this ConfigParser.
         """
-        if "default" not in kwargs and self._global_default is not NONE:
+        if "default" not in kwargs and self._global_default is not NOT_GIVEN:
             kwargs["default"] = self._global_default
         spec = _ConfigSpec.create(name=name, **kwargs)
         self._config_specs.append(spec)
@@ -842,7 +1002,7 @@ class ConfigParser:
         for spec in self._config_specs:
             default = spec.default
             if spec.default is SUPPRESS:
-                default = NONE
+                default = NOT_GIVEN
             setattr(ns, spec.name, [self.ValueWithPriority(default, -1)])
 
     def partially_parse_config(self):
@@ -850,7 +1010,7 @@ class ConfigParser:
         Parse the config sources, but don't raise a RequiredConfigNotFoundError
         exception if a required config is not found in any config source.
 
-        Returns: a multiconfparse.Namespace object containing the parsed
+        Returns: a Namespace object containing the parsed
         values.
         """
         return self._parse_config(check_required=False)
@@ -859,14 +1019,14 @@ class ConfigParser:
         """
         Parse the config sources.
 
-        Returns: a multiconfparse.Namespace object containing the parsed
+        Returns: a Namespace object containing the parsed
         values.
         """
         return self._parse_config(check_required=True)
 
     def _process_missing(self, parsed_values):
         for spec in self._config_specs:
-            if getattr(parsed_values, spec.name) is NONE:
+            if getattr(parsed_values, spec.name) is NOT_GIVEN:
                 if spec.default is SUPPRESS:
                     delattr(parsed_values, spec.name)
                 else:
@@ -896,11 +1056,11 @@ class ConfigParser:
 def _getattr_or_none(obj, attr):
     if hasattr(obj, attr):
         return getattr(obj, attr)
-    return NONE
+    return NOT_GIVEN
 
 
 def _has_nonnone_attr(obj, attr):
-    return _getattr_or_none(obj, attr) is not NONE
+    return _getattr_or_none(obj, attr) is not NOT_GIVEN
 
 
 def _namespace_from_dict(d, config_specs=None):

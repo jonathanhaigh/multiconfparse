@@ -94,9 +94,9 @@ def get_const_value(category, type, index=0):
 
 
 def get_parse_return_value(
-    action, category, type, nargs, input_nargs=mcp.NONE, index=0
+    action, category, type, nargs, input_nargs=mcp.NOT_GIVEN, index=0
 ):
-    if input_nargs is mcp.NONE:
+    if input_nargs is mcp.NOT_GIVEN:
         input_nargs = nargs
     value = get_value(category, type, input_nargs, index)
 
@@ -616,7 +616,7 @@ for action, nargs in itertools.product(
                 "type": type,
                 "default": default_value,
             },
-            dict_source=mcp.NONE,
+            dict_source=mcp.NOT_GIVEN,
             argparse_source="",
             test_without_source=True,
             expected=default_expected,
@@ -644,7 +644,7 @@ for action, nargs in itertools.product(
             ),
             config_parser_args={"config_default": global_default_value},
             config_args={"action": action, "nargs": nargs, "type": type},
-            dict_source=mcp.NONE,
+            dict_source=mcp.NOT_GIVEN,
             argparse_source="",
             test_without_source=True,
             expected=global_default_expected,
@@ -684,7 +684,7 @@ for action, nargs in itertools.product(
                 "type": type,
                 "default": default_value,
             },
-            dict_source=mcp.NONE,
+            dict_source=mcp.NOT_GIVEN,
             argparse_source="",
             test_without_source=True,
             expected=default_expected,
@@ -723,7 +723,7 @@ for action in ("store", "append", "extend"):
                 "type": type,
                 "const": const_value,
             },
-            dict_source=mcp.NONE,
+            dict_source=mcp.NOT_GIVEN,
             argparse_source="",
             test_without_source=True,
             expected=None,
@@ -778,7 +778,7 @@ for action in ("store", "append", "extend"):
                 "const": const_value,
                 "default": default_value,
             },
-            dict_source=mcp.NONE,
+            dict_source=mcp.NOT_GIVEN,
             argparse_source="",
             test_without_source=True,
             expected=default_expected,
@@ -849,7 +849,7 @@ store_const_test_specs = [
     Spec(
         id="store_const; args=no; default=yes",
         config_args={"action": "store_const", "const": "c", "default": "d"},
-        dict_source=mcp.NONE,
+        dict_source=mcp.NOT_GIVEN,
         argparse_source="",
         expected="d",
     ),
@@ -867,7 +867,7 @@ store_true_test_specs = [
     Spec(
         id="store_true; args=no",
         config_args={"action": "store_true"},
-        dict_source=mcp.NONE,
+        dict_source=mcp.NOT_GIVEN,
         argparse_source="",
         expected=False,
     ),
@@ -888,7 +888,7 @@ store_true_test_specs = [
     Spec(
         id="store_true; args=no; default=yes",
         config_args={"action": "store_true", "default": "d"},
-        dict_source=mcp.NONE,
+        dict_source=mcp.NOT_GIVEN,
         argparse_source="",
         expected="d",
     ),
@@ -906,7 +906,7 @@ store_false_test_specs = [
     Spec(
         id="store_false; args=no",
         config_args={"action": "store_false"},
-        dict_source=mcp.NONE,
+        dict_source=mcp.NOT_GIVEN,
         argparse_source="",
         expected=True,
     ),
@@ -927,7 +927,7 @@ store_false_test_specs = [
     Spec(
         id="store_false; args=no; default=yes",
         config_args={"action": "store_false", "default": "d"},
-        dict_source=mcp.NONE,
+        dict_source=mcp.NOT_GIVEN,
         argparse_source="",
         expected="d",
     ),
@@ -940,15 +940,17 @@ nargs_none_actions = ("extend", "store_true", "count")
 nargs_none_with_const_actions = ("store_const",)
 for action, nargs, const in itertools.chain(
     itertools.product(
-        nargs_not0_actions, (mcp.NONE, 1, 2, "?", "*", "+"), (mcp.NONE,),
+        nargs_not0_actions,
+        (mcp.NOT_GIVEN, 1, 2, "?", "*", "+"),
+        (mcp.NOT_GIVEN,),
     ),
-    ((a, mcp.NONE, mcp.NONE) for a in nargs_none_actions),
-    ((a, mcp.NONE, "c") for a in nargs_none_with_const_actions),
+    ((a, mcp.NOT_GIVEN, mcp.NOT_GIVEN) for a in nargs_none_actions),
+    ((a, mcp.NOT_GIVEN, "c") for a in nargs_none_with_const_actions),
 ):
     extra_config_args = {}
-    if nargs is not mcp.NONE:
+    if nargs is not mcp.NOT_GIVEN:
         extra_config_args["nargs"] = nargs
-    if const is not mcp.NONE:
+    if const is not mcp.NOT_GIVEN:
         extra_config_args["const"] = const
 
     suppress_test_specs.append(
@@ -962,10 +964,10 @@ for action, nargs, const in itertools.chain(
                 "default": mcp.SUPPRESS,
                 **extra_config_args,
             },
-            dict_source=mcp.NONE,
+            dict_source=mcp.NOT_GIVEN,
             argparse_source="",
             test_without_source=True,
-            expected=mcp.NONE,
+            expected=mcp.NOT_GIVEN,
         )
     )
     suppress_test_specs.append(
@@ -976,10 +978,10 @@ for action, nargs, const in itertools.chain(
             ),
             config_args={"action": action, **extra_config_args},
             config_parser_args={"config_default": mcp.SUPPRESS},
-            dict_source=mcp.NONE,
+            dict_source=mcp.NOT_GIVEN,
             argparse_source="",
             test_without_source=True,
-            expected=mcp.NONE,
+            expected=mcp.NOT_GIVEN,
         )
     )
 test_specs.extend(suppress_test_specs)
@@ -1020,7 +1022,7 @@ for action, type in itertools.product(("store", "append", "extend"), TYPES):
                 "default": expected,
                 "type": type,
             },
-            dict_source=mcp.NONE,
+            dict_source=mcp.NOT_GIVEN,
             argparse_source="",
             test_without_source=True,
             expected=Exception,
@@ -1030,7 +1032,7 @@ for action, type in itertools.product(("store", "append", "extend"), TYPES):
         Spec(
             id=f"required; action={action}; nargs=no; args=no; required=yes",
             config_args={"action": action, "required": True, "type": type},
-            dict_source=mcp.NONE,
+            dict_source=mcp.NOT_GIVEN,
             argparse_source="",
             test_without_source=True,
             expected=Exception,
@@ -1094,11 +1096,11 @@ def _test_spec_with_dict(spec):
     mcp_parser = mcp.ConfigParser(**spec.config_parser_args)
     mcp_parser.add_config("c", **spec.config_args)
     dict_source = {}
-    if spec.dict_source is not mcp.NONE:
+    if spec.dict_source is not mcp.NOT_GIVEN:
         dict_source["c"] = spec.dict_source
     mcp_parser.add_source(mcp.DictSource, dict_source)
     values = mcp_parser.parse_config()
-    if spec.expected is mcp.NONE:
+    if spec.expected is mcp.NOT_GIVEN:
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
@@ -1120,14 +1122,14 @@ def _test_spec_with_env(spec):
     mcp_parser = mcp.ConfigParser(**spec.config_parser_args)
     mcp_parser.add_config("c", **spec.config_args)
     env = {}
-    if spec.dict_source is not mcp.NONE:
+    if spec.dict_source is not mcp.NOT_GIVEN:
         if isinstance(spec.dict_source, list):
             env["MULTICONFIG_TEST_C"] = shlex_join(
                 (str(v) for v in spec.dict_source)
             )
         elif (
             spec.dict_source is None
-            or spec.dict_source is mcp.PRESENT_WITHOUT_VALUE
+            or spec.dict_source is mcp.MENTIONED_WITHOUT_VALUE
         ):
             env["MULTICONFIG_TEST_C"] = ""
         else:
@@ -1140,7 +1142,7 @@ def _test_spec_with_env(spec):
         values = mcp_parser.parse_config()
     print(f"values={values}")
     print(f"expected={spec.expected}")
-    if spec.expected is mcp.NONE:
+    if spec.expected is mcp.NOT_GIVEN:
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
@@ -1162,12 +1164,12 @@ def _test_spec_with_json(spec):
     mcp_parser = mcp.ConfigParser(**spec.config_parser_args)
     mcp_parser.add_config("c", **spec.config_args)
     dict_source = {}
-    if spec.dict_source is not mcp.NONE:
+    if spec.dict_source is not mcp.NOT_GIVEN:
         dict_source["c"] = spec.dict_source
     fileobj = io.StringIO(json.dumps(dict_source, cls=JsonEncoderWithPath))
     mcp_parser.add_source(mcp.JsonSource, fileobj=fileobj)
     values = mcp_parser.parse_config()
-    if spec.expected is mcp.NONE:
+    if spec.expected is mcp.NOT_GIVEN:
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
@@ -1194,7 +1196,7 @@ def _test_spec_with_argparse(spec):
     argv = ["prog", *spec.argparse_source.split()]
     with utm.patch.object(sys, "argv", argv):
         values = mcp_parser.parse_config()
-    if spec.expected is mcp.NONE:
+    if spec.expected is mcp.NOT_GIVEN:
         assert not hasattr(values, "c")
     else:
         assert getattr(values, "c") == spec.expected
@@ -1229,7 +1231,7 @@ def _test_spec_against_argparse(spec):
         config_default = spec.config_parser_args["config_default"]
         if config_default is mcp.SUPPRESS:
             rap_args["argument_default"] = argparse.SUPPRESS
-        elif config_default is not mcp.NONE:
+        elif config_default is not mcp.NOT_GIVEN:
             rap_args["argument_default"] = config_default
 
     if (
@@ -1241,7 +1243,7 @@ def _test_spec_against_argparse(spec):
     ap_parser = RaisingArgumentParser(**rap_args)
     ap_parser.add_argument("--c", **spec.config_args)
     ap_values = ap_parser.parse_args(spec.argparse_source.split())
-    if spec.expected is mcp.NONE:
+    if spec.expected is mcp.NOT_GIVEN:
         assert not hasattr(ap_values, "c")
     else:
         assert getattr(ap_values, "c") == spec.expected
@@ -1464,18 +1466,18 @@ def test_getattr_or_none():
     obj = mcp.Namespace()
     setattr(obj, "c1", "v1")
     setattr(obj, "c2", None)
-    setattr(obj, "c3", mcp.NONE)
+    setattr(obj, "c3", mcp.NOT_GIVEN)
     assert mcp._getattr_or_none(obj, "c1") == "v1"
     assert mcp._getattr_or_none(obj, "c2") is None
-    assert mcp._getattr_or_none(obj, "c3") is mcp.NONE
-    assert mcp._getattr_or_none(obj, "c4") is mcp.NONE
+    assert mcp._getattr_or_none(obj, "c3") is mcp.NOT_GIVEN
+    assert mcp._getattr_or_none(obj, "c4") is mcp.NOT_GIVEN
 
 
 def test_has_nonnone_attr():
     obj = mcp.Namespace()
     setattr(obj, "c1", "v1")
     setattr(obj, "c2", None)
-    setattr(obj, "c3", mcp.NONE)
+    setattr(obj, "c3", mcp.NOT_GIVEN)
     assert mcp._has_nonnone_attr(obj, "c1")
     assert mcp._has_nonnone_attr(obj, "c2")
     assert not mcp._has_nonnone_attr(obj, "c3")
