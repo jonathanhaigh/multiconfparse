@@ -1,6 +1,5 @@
 API reference
 =============
 
-
-.. automodule:: multiconfparse.multiconfparse
+.. automodule:: multiconfparse
    :members:

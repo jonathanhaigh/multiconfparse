@@ -7,7 +7,7 @@ Import the :py:mod:`multiconfparse` module
 
    .. code-block:: python
 
-      import multiconfparse.multiconfparse as mcp
+      import multiconfparse
 
 
 Create a :class:`ConfigParser` object
@@ -15,7 +15,7 @@ Create a :class:`ConfigParser` object
 
    .. code-block:: python
 
-      config_parser = mcp.ConfigParser()
+      config_parser = multiconfparse.ConfigParser()
 
    :class:`ConfigParser` objects:
 
@@ -63,9 +63,15 @@ Add config sources
 
    .. code-block:: python
 
-      config_parser.add_source(mcp.SimpleArgparseSource)
-      config_parser.add_source(mcp.EnvironmentSource, env_var_prefix="MY_APP_")
-      config_parser.add_source(mcp.JsonSource, "/path/to/config/file.json")
+      config_parser.add_source(multiconfparse.SimpleArgparseSource)
+      config_parser.add_source(
+         multiconfparse.EnvironmentSource,
+         env_var_prefix="MY_APP_"
+      )
+      config_parser.add_source(
+         multiconfparse.JsonSource,
+         path="/path/to/config/file.json"
+      )
 
    :meth:`ConfigParser.add_source`'s first parameter is a class that knows how
    to parse a config source. Other parameters are passed on to that class's

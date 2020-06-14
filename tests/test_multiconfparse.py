@@ -16,7 +16,7 @@ import tempfile
 import unittest.mock as utm
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-from multiconfparse import multiconfparse as mcp  # noqa: E402
+import multiconfparse as mcp  # noqa: E402
 
 
 VALID_CONFIG_NAMES = ("c1", "c_", "C", "_c")

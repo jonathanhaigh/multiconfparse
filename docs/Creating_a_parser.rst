@@ -1,4 +1,4 @@
-.. py:currentmodule:: multiconfparse.multiconfparse
+.. py:currentmodule:: multiconfparse
 
 Creating a parser
 =================
