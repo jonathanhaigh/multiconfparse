@@ -18,6 +18,11 @@ and various config file formats. The API is very similar to the Argparse_ API.
    Installation
    Quick start <Quick_start>
    Creating a parser <Creating_a_parser>
+   Adding config items <Adding_config_items>
+   Adding sources <Adding_sources>
+   Running the parse <Running_the_parse>
+   Creating your own source classes <Creating_your_own_source_classes>
+   Creating your own action classes <Creating_your_own_action_classes>
    API reference <API_reference>
 
 Indices and tables
