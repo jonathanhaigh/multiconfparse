@@ -104,7 +104,7 @@ class _SuppressAttributeCreation:
 #: :meth:`ConfigParser.parse_config`. The default behaviour (when a
 #: ``default`` value is not given by the user) is for the :class:`Namespace`
 #: returned by :meth:`ConfigParser.parse_config` to have an attribute with a
-#: value of :const:`None`.
+#: value of :data:`None`.
 SUPPRESS = _SuppressAttributeCreation()
 
 
@@ -117,12 +117,12 @@ class _NotGiven:
 
 #: Singleton used to represent that an option or config item is not present.
 #:
-#: This is used rather than :const:`None` to distinguish between:
+#: This is used rather than :data:`None` to distinguish between:
 #:
-#: * the case where the user has provided an option with the value :const:None`
+#: * the case where the user has provided an option with the value :data:None`
 #:   and the user has not provided an option at all;
 #:
-#: * the case where a config item has the value :const:`None` and the case
+#: * the case where a config item has the value :data:`None` and the case
 #:   where the config item not been mentioned at all in the config. Contrast
 #:   this with :const:`MENTIONED_WITHOUT_VALUE` which represents a config
 #:   item that has been mentioned in the config but does not have a value (e.g.
@@ -140,8 +140,8 @@ class _MentionedWithoutValue:
 #: Singleton used to represent that a config item has been mentioned in a
 #: config source but does not have a value.
 #:
-#: This is used rather than :const:`None` to distinguish between: the case
-#: where a config item has the value :const:`None` and the case where the
+#: This is used rather than :data:`None` to distinguish between: the case
+#: where a config item has the value :data:`None` and the case where the
 #: config item does not have a value at all (e.g. for a config item with
 #: ``nargs == 0``. Contrast this with :const:`NOT_GIVEN` which represents a
 # config item that has not been mentioned in the config at all.
@@ -315,7 +315,7 @@ class DictSource(Source):
       The default ``none_values`` is
       ``[None, multiconfparse.MENTIONED_WITHOUT_VALUE]``. using
       ``none_values=[multiconfparse.MENTIONED_WITHOUT_VALUE]`` is useful if
-      you want :const:`None` to be treated as a valid config value.
+      you want :data:`None` to be treated as a valid config value.
 
     * ``priority`` (optional, keyword): The priority for the
       :class:`DictSource`. The default priority for a :class:`DictSource`
@@ -869,7 +869,7 @@ class ConfigSpec(abc.ABC):
 
     .. code-block:: python
 
-        class _StoreConstConfigSpec(ConfigSpec):
+        class StoreConstConfigSpec(ConfigSpec):
             action = "store_const"
 
             def __init__(self, const, **kwargs):
@@ -1029,7 +1029,7 @@ class ConfigSpec(abc.ABC):
             self._validate_choice(v)
 
 
-class _StoreConfigSpec(ConfigSpec):
+class StoreConfigSpec(ConfigSpec):
     action = "store"
 
     def __init__(self, const=None, **kwargs):
@@ -1058,7 +1058,7 @@ class _StoreConfigSpec(ConfigSpec):
         self.const = const
 
 
-class _StoreConstConfigSpec(ConfigSpec):
+class StoreConstConfigSpec(ConfigSpec):
     action = "store_const"
 
     def __init__(self, const, **kwargs):
@@ -1076,21 +1076,21 @@ class _StoreConstConfigSpec(ConfigSpec):
         return self.const
 
 
-class _StoreTrueConfigSpec(_StoreConstConfigSpec):
+class StoreTrueConfigSpec(StoreConstConfigSpec):
     action = "store_true"
 
     def __init__(self, default=False, **kwargs):
         super().__init__(const=True, default=default, **kwargs)
 
 
-class _StoreFalseConfigSpec(_StoreConstConfigSpec):
+class StoreFalseConfigSpec(StoreConstConfigSpec):
     action = "store_false"
 
     def __init__(self, default=True, **kwargs):
         super().__init__(const=False, default=default, **kwargs)
 
 
-class _AppendConfigSpec(ConfigSpec):
+class AppendConfigSpec(ConfigSpec):
     action = "append"
 
     def __init__(self, const=None, **kwargs):
@@ -1121,7 +1121,7 @@ class _AppendConfigSpec(ConfigSpec):
         self.const = const
 
 
-class _CountConfigSpec(ConfigSpec):
+class CountConfigSpec(ConfigSpec):
     action = "count"
 
     def __init__(
@@ -1138,7 +1138,7 @@ class _CountConfigSpec(ConfigSpec):
         return current + 1
 
 
-class _ExtendConfigSpec(_AppendConfigSpec):
+class ExtendConfigSpec(AppendConfigSpec):
     action = "extend"
 
     def __init__(self, **kwargs):
@@ -1192,7 +1192,155 @@ class ConfigParser:
 
     def add_config(self, name, **kwargs):
         """
-        Add a config item to the ConfigParser.
+        Add a config item to the :class:`ConfigParser`.
+
+        The arguments that apply to all config items are:
+
+        * ``name`` (required, positional): the name of the config item.
+
+          In the :class:`Namespace` object returned by :meth:`parse_config`,
+          the name of the attribute used for this config item will be ``name``
+          and must be a valid Python identifier.
+
+          ``name`` is also used by :class:`Source` classes to generate the
+          strings that will be used to find the config in config sources. The
+          `Source` classes may, use a modified version of ``name``, however.
+          For example, the :class:`ArgparseSource` and
+          :class:`SimpleArgparseSource` will convert underscores (``_``) to
+          hyphens (``-``) and add a ``--`` prefix, so if a config item had the
+          name ``"config_item1"``, :class:`ArgparseSource` and
+          :class:`SimpleArgparseSource` would use the option string
+          ``"--config-item1"``.
+
+        * ``action`` (optional, keyword): the name of the action that should be
+          performed when a config item is found in a config source. The default
+          action is ``"store"``, and the built-in actions are described briefly
+          below. See :ref:`Actions` for more detailed information about
+          actions. The built-in actions are all based on :mod:`argparse`
+          actions so the :mod:`argparse documentation<argparse>` may also
+          provide useful information.
+
+          * ``store``: this action just stores the highest priority value for
+            config item.
+
+          * ``store_const``: this stores the value specified in the ``const``
+            argument.
+
+          * ``store_true``: this stores the value :data:`True` and sets the
+            ``default`` argument to :data:`False`. It is a special case of
+            ``store_const``.
+
+          * ``store_false``: this stores the value :data:`False` and sets the
+            ``default`` argument to :data:`True`. It is a special case of
+            ``store_const``.
+
+          * ``append``: this creates a :class:`list` containing every value
+            seen (with lower priority values first). When ``nargs >= 1``,
+            ``nargs == "+"`` or ``nargs == "*"``, each value in the list s
+            iteself a list containing the arguments for a mention of the
+            config item.
+
+          * ``count``: this stores the number of mentions of the config item.
+
+          * ``extend``: this creates a :class:`list` containing every value
+            seen (with lower priority values first). Unlike ``append``, when
+            ``nargs >= 1``, ``nargs == "+"`` or ``nargs == "*"``, arguments for
+            mentions of the config item are not placed in separate sublists for
+            each mention.
+
+        * ``default``: the default value for this config item. Note that some
+          actions will incorporate the ``default`` value into the final value
+          for the config item even if the config item is mentioned in one of
+          the sources (e.g. ``append``, ``count`` and ``extend``).
+
+          Note that the default value for all config items can also be set by
+          passing a value for the ``config_default`` argument of
+          :class:`ConfigParser`. If both the ``config_default`` argument to
+          :class:`ConfigParser` and the ``default`` argument to
+          :meth:`add_config` are used then only the ``default`` argument to
+          :meth:`add_config` is used.
+
+          If a default value is not provided for the config item by the
+          ``default`` argument, the ``config_default`` argument or by the
+          action class (like e.g. `store_true` does), then the final value for
+          the config will be :data:`None` if the config item is not mentioned
+          in any source.
+
+          The special value :const:`SUPPRESS` can be passed as the ``default``
+          argument. In this case, if the config item is not mentioned in any
+          source, it will not be given an attribute in the :class:`Namespace`
+          object returned by :meth:`parse_config`.
+
+        * ``exclude_sources`` (optional, keyword): a collection of
+          :class:`Source` classes that should ignore this config item. This
+          argument is mutually exclusive with ``include_sources``. If neither
+          ``exclude_sources`` nor ``include_sources`` is given, the config item
+          will be looked for by all sources added to the :class:`ConfigParser`.
+
+        * ``include_sources`` (optional, keyword): a collection of
+          :class:`Source` classes that should look for this config item. This
+          argument is mutually exclusive with ``exclude_sources``.  If neither
+          ``exclude_sources`` nor ``include_sources`` is given, the config item
+          will be looked for by all sources added to the :class:`ConfigParser`.
+
+        * ``help``: the help text/description for the config item.
+
+        The other arguments are all keyword arguments and are passed on to the
+        class that implements the config items action and may have different
+        default values or may not even be valid for all actions. See
+        :ref:`Actions` for action specific documentation.
+
+        * ``nargs``: specifies the number of arguments that the config item
+          accepts. The values that ``nargs`` can take are:
+
+          * :data:`None`: the config item will take a single argument.
+
+          * ``0``: the config item will take no arguments. This value is
+            usually not given to :meth:`add_config` but may be implicit for
+            an action (e.g. ``store_const`` or ``count``).
+
+          * An :class:`int` ``N >= 1``: the config item will take ``N``
+            arguments and the value for a mention of the config item will be a
+            :class:`list` containing each argument. In particular, when ``nargs
+            == 1`` the value for each mention of a config item will be a
+            :class:`list` containing a single element.
+
+          * ``"?"``: The config item will take a single optional argument. When
+            the config item is mentioned without an accompanying value, the
+            value for the mention is the value of the config item's ``const``
+            argument.
+
+          * ``"*"``: The config item will take zero or more arguments and the
+            value for a mention of the config item will be a :class:`list`
+            containing each argument.
+
+          * ``"+"`` The config item will take one or more arguments and the
+            value for a mention of the config item will be a :class:`list`
+            containing each argument.
+
+        * ``const``: The value to use for a mention of the config item where
+          there is no accompanying argument. This is only ever used when
+          ``nargs == 0`` or ``nargs == "+"``.
+
+        * ``type``: The type to which each argument of the config item should
+          be converted. This can be any callable object that takes a single
+          argument (an object with a ``__call__(self, arg)`` method), including
+          classes like :class:`int` and functions that take a single argument.
+          Note that some sources that read typed data may produce config item
+          argument values that aren't always :class:`str` objects.
+
+          The default ``type`` is :class:`str` unless that doesn't make sense
+          (e.g. when ``nargs == 0``.
+
+        * ``required``: specifies whether an exception should be raised if a
+          value for this config item cannot be found in any source.
+
+          The default ``required`` is :data:`False`.
+
+        * ``choices``: specifies a collection of valid values for the arguments
+          of the config item. If ``choices`` is specified, an exception is
+          raised if the config item is mentioned in a source with an argument
+          that is not in ``choices``.
         """
         if "default" not in kwargs and self._global_default is not NOT_GIVEN:
             kwargs["default"] = self._global_default
