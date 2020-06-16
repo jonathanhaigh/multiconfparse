@@ -147,6 +147,33 @@ class ArgparseError(RuntimeError):
     pass
 
 
+class UcStoreConfigSpec(mcp.ConfigSpec):
+    action = "uc_store"
+
+    def __init__(self, const=None, **kwargs):
+        super().__init__(type=str, **kwargs)
+
+        if self.nargs == 0:
+            raise ValueError(
+                f"nargs == 0 is not valid for the {self.action} action"
+            )
+
+        if const is not None and self.nargs != "?":
+            raise ValueError(
+                f"const cannot be supplied to the {self.action} action "
+                f'unless nargs is "?"'
+            )
+        self.const = const
+
+    def accumulate_processed_value(self, current, new):
+        assert new is not mcp.NOT_GIVEN
+        if self.nargs == "?" and new is mcp.MENTIONED_WITHOUT_VALUE:
+            return self.const
+        if isinstance(self.nargs, int) or self.nargs in ("+", "*"):
+            return [arg.upper() for arg in new]
+        return new.upper()
+
+
 class RaisingArgumentParser(argparse.ArgumentParser):
     def exit(self, status=0, message=None):
         if status:
@@ -278,6 +305,22 @@ def test_validate_type():
     mcp_parser = mcp.ConfigParser()
     with pytest.raises(TypeError):
         mcp_parser.add_config("c1", type=1)
+
+
+def test_custom_action():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action=UcStoreConfigSpec)
+    mcp_parser.add_config("c2", action=UcStoreConfigSpec, nargs=2)
+    mcp_parser.add_source(mcp.DictSource, {"c1": "abc", "c2": ["def", "ghi"]})
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict(
+        {"c1": "ABC", "c2": ["DEF", "GHI"]}
+    )
+    assert values == expected_values
+
+    with pytest.raises(Exception):
+        mcp_parser = mcp.ConfigParser()
+        mcp_parser.add_config("c1", action=UcStoreConfigSpec, type=int)
 
 
 def test_count():
@@ -506,8 +549,8 @@ for action, nargs, input_nargs, type in (
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_with_valid_input; action={action}; nargs={nargs}; "
-                f"args=yes_{input_nargs}; type={type.__name__}"
+                f"nargs_with_valid_input, action={action}, nargs={nargs}, "
+                f"args=yes_{input_nargs}, type={type.__name__}"
             ),
             config_args={"action": action, "nargs": nargs, "type": type},
             dict_source=dict_value,
@@ -530,8 +573,8 @@ for action, nargs, input_nargs, type in (
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_with_invalid_input; action={action}; nargs={nargs}; "
-                f"args=yes_{input_nargs}; type={type.__name__}"
+                f"nargs_with_invalid_input, action={action}, nargs={nargs}, "
+                f"args=yes_{input_nargs}, type={type.__name__}"
             ),
             config_args={"action": action, "nargs": nargs, "type": type},
             dict_source=dict_value,
@@ -547,8 +590,8 @@ for action, nargs in itertools.product(
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_with_invalid_const; action={action}; nargs={nargs}; "
-                f"args=no; type={type.__name__}; const=yes"
+                f"nargs_with_invalid_const, action={action}, nargs={nargs}, "
+                f"args=no, type={type.__name__}, const=yes"
             ),
             config_args={
                 "action": action,
@@ -589,8 +632,8 @@ for action, nargs in itertools.product(
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_with_default; action={action}; nargs={nargs}; "
-                f"args=yes_{nargs}; type={type.__name__}; default=yes"
+                f"nargs_with_default, action={action}, nargs={nargs}, "
+                f"args=yes_{nargs}, type={type.__name__}, default=yes"
             ),
             config_args={
                 "action": action,
@@ -607,8 +650,8 @@ for action, nargs in itertools.product(
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_with_default; action={action}; nargs={nargs}; "
-                f"args=no; type={type.__name__}; default=yes"
+                f"nargs_with_default, action={action}, nargs={nargs}, "
+                f"args=no, type={type.__name__}, default=yes"
             ),
             config_args={
                 "action": action,
@@ -625,8 +668,8 @@ for action, nargs in itertools.product(
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_with_global_default; action={action}; nargs={nargs}; "
-                f"args=yes_{nargs}; type={type.__name__}; global_default=yes"
+                f"nargs_with_global_default, action={action}, nargs={nargs}, "
+                f"args=yes_{nargs}, type={type.__name__}, global_default=yes"
             ),
             config_parser_args={"config_default": global_default_value},
             config_args={"action": action, "nargs": nargs, "type": type},
@@ -639,8 +682,8 @@ for action, nargs in itertools.product(
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_with_global_default; action={action}; nargs={nargs}; "
-                f"args=no; type={type.__name__}; global_default=yes"
+                f"nargs_with_global_default, action={action}, nargs={nargs}, "
+                f"args=no, type={type.__name__}, global_default=yes"
             ),
             config_parser_args={"config_default": global_default_value},
             config_args={"action": action, "nargs": nargs, "type": type},
@@ -653,9 +696,9 @@ for action, nargs in itertools.product(
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_with_default_and_global_default; action={action}; "
-                f"nargs={nargs}; args=yes_{nargs}; type={type.__name__};"
-                f"default=yes; global_default=yes"
+                f"nargs_with_default_and_global_default, action={action}, "
+                f"nargs={nargs}, args=yes_{nargs}, type={type.__name__},"
+                f"default=yes, global_default=yes"
             ),
             config_parser_args={"config_default": global_default_value},
             config_args={
@@ -673,9 +716,9 @@ for action, nargs in itertools.product(
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_with_default_and_global_default; action={action}; "
-                f"nargs={nargs}; args=no; type={type.__name__}; "
-                f"default=yes; global_default=yes"
+                f"nargs_with_default_and_global_default, action={action}, "
+                f"nargs={nargs}, args=no, type={type.__name__}, "
+                f"default=yes, global_default=yes"
             ),
             config_parser_args={"config_default": global_default_value},
             config_args={
@@ -714,8 +757,8 @@ for action in ("store", "append", "extend"):
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_0_or_1_with_const; action={action}; nargs=?; args=no; "
-                f"type={type.__name__}; const=yes"
+                f"nargs_0_or_1_with_const, action={action}, nargs=?, args=no, "
+                f"type={type.__name__}, const=yes"
             ),
             config_args={
                 "action": action,
@@ -732,8 +775,8 @@ for action in ("store", "append", "extend"):
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_0_or_1_with_const; action={action}; nargs=?; "
-                f"args=yes1; type={type.__name__}; const=yes"
+                f"nargs_0_or_1_with_const, action={action}, nargs=?, "
+                f"args=yes1, type={type.__name__}, const=yes"
             ),
             config_args={
                 "action": action,
@@ -750,8 +793,8 @@ for action in ("store", "append", "extend"):
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_0_or_1_with_const; action={action}; nargs=?; "
-                f"args=yes0; type={type.__name__}; const=yes"
+                f"nargs_0_or_1_with_const, action={action}, nargs=?, "
+                f"args=yes0, type={type.__name__}, const=yes"
             ),
             config_args={
                 "action": action,
@@ -768,8 +811,8 @@ for action in ("store", "append", "extend"):
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_0_or_1_with_const; action={action}; nargs=?; args=no; "
-                f"type={type.__name__}; default=yes; const=yes"
+                f"nargs_0_or_1_with_const, action={action}, nargs=?, args=no, "
+                f"type={type.__name__}, default=yes, const=yes"
             ),
             config_args={
                 "action": action,
@@ -787,8 +830,8 @@ for action in ("store", "append", "extend"):
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_0_or_1_with_const; action={action}; nargs=?; "
-                f"args=yes1; type={type.__name__}; default=yes; const=yes"
+                f"nargs_0_or_1_with_const, action={action}, nargs=?, "
+                f"args=yes1, type={type.__name__}, default=yes, const=yes"
             ),
             config_args={
                 "action": action,
@@ -806,8 +849,8 @@ for action in ("store", "append", "extend"):
     nargs_test_specs.append(
         Spec(
             id=(
-                f"nargs_0_or_1_with_const; action={action}; nargs=?; "
-                f"args=yes0; type={type.__name__}; default=yes; const=yes"
+                f"nargs_0_or_1_with_const, action={action}, nargs=?, "
+                f"args=yes0, type={type.__name__}, default=yes, const=yes"
             ),
             config_args={
                 "action": action,
@@ -826,28 +869,28 @@ test_specs.extend(nargs_test_specs)
 
 store_const_test_specs = [
     Spec(
-        id="store_const; args=yes; const=no (missing const)",
+        id="store_const, args=yes, const=no (missing const)",
         config_args={"action": "store_const"},
         dict_source=None,
         argparse_source="--c",
         expected=Exception,
     ),
     Spec(
-        id="store_const; args=yes",
+        id="store_const, args=yes",
         config_args={"action": "store_const", "const": "c"},
         dict_source=None,
         argparse_source="--c",
         expected="c",
     ),
     Spec(
-        id="store_const; args=invalid1",
+        id="store_const, args=invalid1",
         config_args={"action": "store_const", "const": "c"},
         dict_source="v",
         argparse_source="--c v",
         expected=Exception,
     ),
     Spec(
-        id="store_const; args=no; default=yes",
+        id="store_const, args=no, default=yes",
         config_args={"action": "store_const", "const": "c", "default": "d"},
         dict_source=mcp.NOT_GIVEN,
         argparse_source="",
@@ -858,35 +901,35 @@ test_specs.extend(store_const_test_specs)
 
 store_true_test_specs = [
     Spec(
-        id="store_true; args=yes; const=yes (invalid const)",
+        id="store_true, args=yes, const=yes (invalid const)",
         config_args={"action": "store_true", "const": "v"},
         dict_source=None,
         argparse_source="--c",
         expected=Exception,
     ),
     Spec(
-        id="store_true; args=no",
+        id="store_true, args=no",
         config_args={"action": "store_true"},
         dict_source=mcp.NOT_GIVEN,
         argparse_source="",
         expected=False,
     ),
     Spec(
-        id="store_true; args=yes",
+        id="store_true, args=yes",
         config_args={"action": "store_true"},
         dict_source=None,
         argparse_source="--c",
         expected=True,
     ),
     Spec(
-        id="store_true; args=invalid1",
+        id="store_true, args=invalid1",
         config_args={"action": "store_true"},
         dict_source="v",
         argparse_source="--c v",
         expected=Exception,
     ),
     Spec(
-        id="store_true; args=no; default=yes",
+        id="store_true, args=no, default=yes",
         config_args={"action": "store_true", "default": "d"},
         dict_source=mcp.NOT_GIVEN,
         argparse_source="",
@@ -897,35 +940,35 @@ test_specs.extend(store_true_test_specs)
 
 store_false_test_specs = [
     Spec(
-        id="store_false; args=yes; const=yes (invalid const)",
+        id="store_false, args=yes, const=yes (invalid const)",
         config_args={"action": "store_false", "const": "v"},
         dict_source=None,
         argparse_source="--c",
         expected=Exception,
     ),
     Spec(
-        id="store_false; args=no",
+        id="store_false, args=no",
         config_args={"action": "store_false"},
         dict_source=mcp.NOT_GIVEN,
         argparse_source="",
         expected=True,
     ),
     Spec(
-        id="store_false; args=yes",
+        id="store_false, args=yes",
         config_args={"action": "store_false"},
         dict_source=None,
         argparse_source="--c",
         expected=False,
     ),
     Spec(
-        id="store_false; args=invalid1",
+        id="store_false, args=invalid1",
         config_args={"action": "store_false"},
         dict_source="v",
         argparse_source="--c v",
         expected=Exception,
     ),
     Spec(
-        id="store_false; args=no; default=yes",
+        id="store_false, args=no, default=yes",
         config_args={"action": "store_false", "default": "d"},
         dict_source=mcp.NOT_GIVEN,
         argparse_source="",
@@ -956,7 +999,7 @@ for action, nargs, const in itertools.chain(
     suppress_test_specs.append(
         Spec(
             id=(
-                f"suppress; action={action}; nargs={nargs}; args=no; "
+                f"suppress, action={action}, nargs={nargs}, args=no, "
                 f"default=suppress"
             ),
             config_args={
@@ -973,8 +1016,8 @@ for action, nargs, const in itertools.chain(
     suppress_test_specs.append(
         Spec(
             id=(
-                f"suppress; action={action}; nargs={nargs}; args=no; "
-                f"default=none; config_default=suppress"
+                f"suppress, action={action}, nargs={nargs}, args=no, "
+                f"default=none, config_default=suppress"
             ),
             config_args={"action": action, **extra_config_args},
             config_parser_args={"config_default": mcp.SUPPRESS},
@@ -1000,8 +1043,8 @@ for action, type in itertools.product(("store", "append", "extend"), TYPES):
     required_test_specs.append(
         Spec(
             id=(
-                f"required; action={action}; nargs=no; args=yes; "
-                f"type={type.__name__}; required=yes, default=no"
+                f"required, action={action}, nargs=no, args=yes, "
+                f"type={type.__name__}, required=yes, default=no"
             ),
             config_args={"action": action, "required": True, "type": type},
             dict_source=dict_value,
@@ -1013,8 +1056,8 @@ for action, type in itertools.product(("store", "append", "extend"), TYPES):
     required_test_specs.append(
         Spec(
             id=(
-                f"required; action={action}; nargs=no; args=no; "
-                f"type={type.__name__}; required=yes, default=yes"
+                f"required, action={action}, nargs=no, args=no, "
+                f"type={type.__name__}, required=yes, default=yes"
             ),
             config_args={
                 "action": action,
@@ -1030,7 +1073,7 @@ for action, type in itertools.product(("store", "append", "extend"), TYPES):
     )
     required_test_specs.append(
         Spec(
-            id=f"required; action={action}; nargs=no; args=no; required=yes",
+            id=f"required, action={action}, nargs=no, args=no, required=yes",
             config_args={"action": action, "required": True, "type": type},
             dict_source=mcp.NOT_GIVEN,
             argparse_source="",
@@ -1066,8 +1109,8 @@ for action, type, index, category in itertools.product(
     choices_test_specs.append(
         Spec(
             id=(
-                f"choices; action={action}; nargs=no; args=yes; "
-                f"type={type.__name__}; choices={choices}; "
+                f"choices, action={action}, nargs=no, args=yes, "
+                f"type={type.__name__}, choices={choices}, "
                 f"choice={category}{index}"
             ),
             config_args={"action": action, "choices": choices, "type": type},

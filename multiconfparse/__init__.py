@@ -904,6 +904,12 @@ class ConfigSpec(abc.ABC):
     def create(cls, action="store", **kwargs):
         # Factory to obtain ConfigSpec objects with the correct subclass to
         # handle the given action.
+
+        # Users can specify the class for the action directly rather than
+        # giving its name. Assume that's what's happening if action isn't a str
+        if not isinstance(action, str):
+            return action(**kwargs)
+
         if action == "append_const":
             raise NotImplementedError(
                 f"action '{action}' has not been implemented"
