@@ -204,7 +204,7 @@ class Source(abc.ABC):
     def __init_subclass__(cls, **kwargs):
         # Automatically register subclasses specialized to handle a particular
         # config source. For a subclass to be registered it must have the name
-        # of the source it handles in a 'source' class attribute.
+        # of the source it handles in a 'name' class attribute.
         super().__init_subclass__(**kwargs)
         if hasattr(cls, "name"):
             cls._subclasses[cls.name] = cls
@@ -237,7 +237,7 @@ class Source(abc.ABC):
         * The returned :class:`Namespace` has an attribute for each config item
           found. The name of the attribute for a config item must be the config
           item's ``name`` as specified by the ``name`` attribute of its
-          :class:`ConfigSpec`.
+          :class:`Action`.
 
         * The value for each attribute is a list, where each element of the
           list is a value given for the config item in the source. The elements
@@ -804,13 +804,13 @@ class JsonSource(Source):
             return json.load(fileobj)
 
 
-class ConfigSpec(abc.ABC):
+class Action(abc.ABC):
     """
-    Abstract base class for config specifications.
+    Abstract base class config actions.
 
     Classes to support actions should:
 
-    * Inherit from :class:`ConfigSpec`.
+    * Inherit from :class:`Action`.
 
     * Implement the :meth:`accumulate_processed_value` method:
 
@@ -818,7 +818,7 @@ class ConfigSpec(abc.ABC):
         :noindex:
 
       For example, the :meth:`accumulate_processed_value` method for the
-      "append" action is:
+      ``append`` action is:
 
       .. code-block:: python
 
@@ -830,12 +830,12 @@ class ConfigSpec(abc.ABC):
                 return [new]
             return current + [new]
 
-    * Have an ``action`` class attribute set to the name of the action that the
+    * Have a ``name`` class attribute set to the name of the action that the
       class implements.
 
     * Have an ``__init__()`` method that accepts arguments passed to
       :meth:`ConfigParser.add_config` calls by the user (except the ``action``
-      argument) and which calls :meth:`ConfigSpec.__init__` with any of those
+      argument) and which calls :meth:`Action.__init__` with any of those
       arguments which are not specific to the action handled by the class.
       I.e.:
 
@@ -857,16 +857,16 @@ class ConfigSpec(abc.ABC):
 
         * ``exclude_sources``.
 
-      These arguments will be assigned to attributes of the :class:`ConfigSpec`
+      These arguments will be assigned to attributes of the :class:`Action`
       object being created (perhaps after some processing or validation) that
       are available for access by subclasses. The names of the attributes are
       the same as the argument names.
 
       It is recommended that passing the arguments to
-      :meth:`ConfigSpec.__init__` is done by the subclass ``__init__`` method
+      :meth:`Action.__init__` is done by the subclass ``__init__`` method
       accepting a ``**kwargs`` argument to collect any arguments that are not
       used or modified by the action class, then passing that ``**kwargs``
-      argument to :meth:`ConfigSpec.__init__`. The action class may also want
+      argument to :meth:`Action.__init__`. The action class may also want
       pass some arguments that aren't specified by the user if the value of
       those arguments is implied by the action. For example, the
       ``store_const`` action class has the following ``__init__`` method:
@@ -886,15 +886,15 @@ class ConfigSpec(abc.ABC):
       This ensures that an exception is raised if the user specifies ``nargs``,
       ``type``, ``required``, or ``choices`` arguments when adding a
       ``store_const`` action because if the user specifies those arguments they
-      will be given twice in the call to :meth:`ConfigSpec.__init__`.
+      will be given twice in the call to :meth:`Action.__init__`.
 
 
     The full example of the class for the ``store_const`` action is:
 
     .. code-block:: python
 
-        class StoreConstConfigSpec(ConfigSpec):
-            action = "store_const"
+        class StoreConstAction(Action):
+            name = "store_const"
 
             def __init__(self, const, **kwargs):
                 super().__init__(
@@ -919,14 +919,14 @@ class ConfigSpec(abc.ABC):
     def __init_subclass__(cls, **kwargs):
         # Automatically register subclasses specialized to handle a particular
         # action. For a subclass to be registered it must have the name of the
-        # action it handles in an 'action' class attribute.
+        # action it handles in a 'name' class attribute.
         super().__init_subclass__(**kwargs)
-        if hasattr(cls, "action"):
-            cls._subclasses[cls.action] = cls
+        if hasattr(cls, "name"):
+            cls._subclasses[cls.name] = cls
 
     @classmethod
     def create(cls, action="store", **kwargs):
-        # Factory to obtain ConfigSpec objects with the correct subclass to
+        # Factory to obtain Action objects with the correct subclass to
         # handle the given action.
 
         # Users can specify the class for the action directly rather than
@@ -1059,8 +1059,8 @@ class ConfigSpec(abc.ABC):
             self._validate_choice(v)
 
 
-class StoreConfigSpec(ConfigSpec):
-    action = "store"
+class StoreAction(Action):
+    name = "store"
 
     def __init__(self, const=None, **kwargs):
         super().__init__(**kwargs)
@@ -1076,20 +1076,20 @@ class StoreConfigSpec(ConfigSpec):
         super()._set_nargs(nargs)
         if self.nargs == 0:
             raise ValueError(
-                f"nargs == 0 is not valid for the {self.action} action"
+                f"nargs == 0 is not valid for the {self.name} action"
             )
 
     def _set_const(self, const):
         if const is not None and self.nargs != "?":
             raise ValueError(
-                f"const cannot be supplied to the {self.action} action "
+                f"const cannot be supplied to the {self.name} action "
                 f'unless nargs is "?"'
             )
         self.const = const
 
 
-class StoreConstConfigSpec(ConfigSpec):
-    action = "store_const"
+class StoreConstAction(Action):
+    name = "store_const"
 
     def __init__(self, const, **kwargs):
         super().__init__(
@@ -1106,22 +1106,22 @@ class StoreConstConfigSpec(ConfigSpec):
         return self.const
 
 
-class StoreTrueConfigSpec(StoreConstConfigSpec):
-    action = "store_true"
+class StoreTrueAction(StoreConstAction):
+    name = "store_true"
 
     def __init__(self, default=False, **kwargs):
         super().__init__(const=True, default=default, **kwargs)
 
 
-class StoreFalseConfigSpec(StoreConstConfigSpec):
-    action = "store_false"
+class StoreFalseAction(StoreConstAction):
+    name = "store_false"
 
     def __init__(self, default=True, **kwargs):
         super().__init__(const=False, default=default, **kwargs)
 
 
-class AppendConfigSpec(ConfigSpec):
-    action = "append"
+class AppendAction(Action):
+    name = "append"
 
     def __init__(self, const=None, **kwargs):
         super().__init__(**kwargs)
@@ -1139,20 +1139,20 @@ class AppendConfigSpec(ConfigSpec):
         super()._set_nargs(nargs)
         if self.nargs == 0:
             raise ValueError(
-                f"nargs == 0 is not valid for the {self.action} action"
+                f"nargs == 0 is not valid for the {self.name} action"
             )
 
     def _set_const(self, const):
         if const is not None and self.nargs != "?":
             raise ValueError(
-                f"const cannot be supplied to the {self.action} action "
+                f"const cannot be supplied to the {self.name} action "
                 f'unless nargs is "?"'
             )
         self.const = const
 
 
-class CountConfigSpec(ConfigSpec):
-    action = "count"
+class CountAction(Action):
+    name = "count"
 
     def __init__(
         self, **kwargs,
@@ -1168,8 +1168,8 @@ class CountConfigSpec(ConfigSpec):
         return current + 1
 
 
-class ExtendConfigSpec(AppendConfigSpec):
-    action = "extend"
+class ExtendAction(AppendAction):
+    name = "extend"
 
     def __init__(self, **kwargs):
         if "nargs" not in kwargs:
@@ -1374,7 +1374,7 @@ class ConfigParser:
         """
         if "default" not in kwargs and self._global_default is not NOT_GIVEN:
             kwargs["default"] = self._global_default
-        spec = ConfigSpec.create(name=name, **kwargs)
+        spec = Action.create(name=name, **kwargs)
         self._config_specs.append(spec)
         return spec
 

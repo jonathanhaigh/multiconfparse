@@ -147,8 +147,8 @@ class ArgparseError(RuntimeError):
     pass
 
 
-class UcStoreConfigSpec(mcp.ConfigSpec):
-    action = "uc_store"
+class UcStoreAction(mcp.Action):
+    name = "uc_store"
 
     def __init__(self, const=None, **kwargs):
         super().__init__(type=str, **kwargs)
@@ -309,8 +309,8 @@ def test_validate_type():
 
 def test_custom_action():
     mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c1", action=UcStoreConfigSpec)
-    mcp_parser.add_config("c2", action=UcStoreConfigSpec, nargs=2)
+    mcp_parser.add_config("c1", action=UcStoreAction)
+    mcp_parser.add_config("c2", action=UcStoreAction, nargs=2)
     mcp_parser.add_source("dict", {"c1": "abc", "c2": ["def", "ghi"]})
     values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict(
@@ -320,7 +320,7 @@ def test_custom_action():
 
     with pytest.raises(Exception):
         mcp_parser = mcp.ConfigParser()
-        mcp_parser.add_config("c1", action=UcStoreConfigSpec, type=int)
+        mcp_parser.add_config("c1", action=UcStoreAction, type=int)
 
 
 def test_source_as_class():
