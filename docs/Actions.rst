@@ -5,50 +5,59 @@ Actions
 
 The built-in actions are:
 
-`store`
--------
+``store``
+-------------------
 
 .. autoclass:: StoreConfigSpec
    :noindex:
 
 
-`store_const`
--------------
+``store_const``
+-------------------
 
 .. autoclass:: StoreConstConfigSpec
    :noindex:
 
 
-`store_true`
--------------
+``store_true``
+-------------------
 
 .. autoclass:: StoreTrueConfigSpec
    :noindex:
 
 
-`store_false`
--------------
+``store_false``
+-------------------
 
 .. autoclass:: StoreFalseConfigSpec
    :noindex:
 
 
-`append`
--------------
+``append``
+-------------------
 
 .. autoclass:: AppendConfigSpec
    :noindex:
 
 
-`count`
--------------
+``count``
+-------------------
 
 .. autoclass:: CountConfigSpec
    :noindex:
 
 
-`extend`
--------------
+``extend``
+-------------------
 
 .. autoclass:: ExtendConfigSpec
+   :noindex:
+
+
+Creating your own action classes
+--------------------------------
+
+To create your own action class, create a subclass of :class:`ConfigSpec`:
+
+.. autoclass:: ConfigSpec
    :noindex:

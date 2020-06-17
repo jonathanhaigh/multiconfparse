@@ -20,11 +20,10 @@ Create a :class:`ConfigParser` object
    :class:`ConfigParser` objects:
 
    * contain the specifications of your configuration items;
-   * have :class:`Source` - objects that can obtain configuration values
-     from different sources;
-   * coordinate the parsing done by :class:`Source` objects;
-   * merge configuration values from :class:`Source` objects into a single
-     set of values.
+   * maintain a list of sources that can obtain configuration values in
+     different ways.
+   * coordinate the parsing done by each source;
+   * merge configuration values from the sources into a single set of values.
 
 
 Add specifications of your config items
@@ -63,37 +62,31 @@ Add config sources
 
    .. code-block:: python
 
-      config_parser.add_source(multiconfparse.SimpleArgparseSource)
-      config_parser.add_source(
-         multiconfparse.EnvironmentSource,
-         env_var_prefix="MY_APP_"
-      )
-      config_parser.add_source(
-         multiconfparse.JsonSource,
-         path="/path/to/config/file.json"
-      )
+      config_parser.add_source("simple_argparse")
+      config_parser.add_source("environment", env_var_prefix="MY_APP_")
+      config_parser.add_source("json", path="/path/to/config/file.json")
 
-   :meth:`ConfigParser.add_source`'s first parameter is a class that knows how
-   to parse a config source. Other parameters are passed on to that class's
-   :meth:`__init__` method.
+   :meth:`ConfigParser.add_source`'s first parameter is the name of a source or
+   a class that implements a source. Other parameters are passed on to the
+   class that implements the source.
 
    In the example above, three sources are added:
 
-   * :class:`SimpleArgparseSource` - a source that reads config values from the
-     command line. :class:`SimpleArgparseSource` creates an
+   * ``simple_argparse`` - a source that reads config values from the command
+     line. The ``simple_argparse`` source creates an
      :class:`argparse.ArgumentParser` that will accept ``--config-item1`` and
      ``--config-item2`` options.
-   * :class:`EnvironmentSource` - a source that reads config values from
-     environment variables. :class:`EnvironmentSource` will look for config
-     values in the ``MY_APP_CONFIG_ITEM1`` and ``MY_APP_CONFIG_ITEM2``
-     environment variables.
-   * :class:`JsonSource` - a source that reads config values from a JSON file.
-     In this example it will look for a JSON object in
-     "/path/to/config/file.json" and obtain values from the ``"config_item1"``
-     and ``"config_item2"`` keys.
+
+   * ``environment`` - a source that reads config values from environment
+     variables. The ``environment`` source  will look for config values in the
+     ``MY_APP_CONFIG_ITEM1`` and ``MY_APP_CONFIG_ITEM2`` environment variables.
+
+   * ``json`` - a source that reads config values from a JSON file.  In this
+     example it will look for a JSON object in "/path/to/config/file.json" and
+     obtain values from the ``"config_item1"`` and ``"config_item2"`` keys.
 
 
-Parse config from all :class:`Source` objects
+Parse config from all sources
 ---------------------------------------------
 
    .. code-block:: python
@@ -103,8 +96,8 @@ Parse config from all :class:`Source` objects
    :py:meth:`ConfigParser.parse_config()` returns a :class:`Namespace` object
    which is essentially just a plain object with attributes for each config
    item. If a config item was not found in any source, and was not a
-   ``required`` option then it will (by default) be given a value of ``None``
-   in the returned :class:`Namespace` object.
+   ``required`` option then it will (by default) be given a value of
+   :data:`None` in the returned :class:`Namespace` object.
 
 
 Use the config

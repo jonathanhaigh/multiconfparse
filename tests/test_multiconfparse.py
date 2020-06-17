@@ -233,7 +233,7 @@ def test_partially_parse_config():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", required=True)
     mcp_parser.add_config("c2")
-    mcp_parser.add_source(mcp.DictSource, {"c2": "v2"})
+    mcp_parser.add_source("dict", {"c2": "v2"})
     values = mcp_parser.partially_parse_config()
     expected_values = mcp._namespace_from_dict({"c1": None, "c2": "v2"})
     assert values == expected_values
@@ -247,7 +247,7 @@ def test_types():
     mcp_parser.add_config("c4", type=json.loads)
     mcp_parser.add_config("c5", type=split_str)
     mcp_parser.add_source(
-        mcp.DictSource,
+        "dict",
         {
             "c1": "v1",
             "c2": "10",
@@ -280,7 +280,7 @@ def test_file_opening():
     mcp_parser.add_config("c2", type=mcp.FileType("w"))
     with tempfile.TemporaryDirectory() as tmpdir:
         mcp_parser.add_source(
-            mcp.DictSource,
+            "dict",
             {"c1": str(TEST_FILE_PATH), "c2": f"{tmpdir}/testfile2.txt"},
         )
         values = mcp_parser.parse_config()
@@ -311,7 +311,7 @@ def test_custom_action():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", action=UcStoreConfigSpec)
     mcp_parser.add_config("c2", action=UcStoreConfigSpec, nargs=2)
-    mcp_parser.add_source(mcp.DictSource, {"c1": "abc", "c2": ["def", "ghi"]})
+    mcp_parser.add_source("dict", {"c1": "abc", "c2": ["def", "ghi"]})
     values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict(
         {"c1": "ABC", "c2": ["DEF", "GHI"]}
@@ -323,11 +323,41 @@ def test_custom_action():
         mcp_parser.add_config("c1", action=UcStoreConfigSpec, type=int)
 
 
+def test_source_as_class():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1")
+    mcp_parser.add_source(mcp.DictSource, {"c1": "v1"})
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": "v1"})
+    assert values == expected_values
+
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", exclude_sources=["dict"])
+    mcp_parser.add_source(mcp.DictSource, {"c1": "v1"})
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": None})
+    assert values == expected_values
+
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", include_sources=["dict"])
+    mcp_parser.add_source(mcp.DictSource, {"c1": "v1"})
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": "v1"})
+    assert values == expected_values
+
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", include_sources=["json"])
+    mcp_parser.add_source(mcp.DictSource, {"c1": "v1"})
+    values = mcp_parser.parse_config()
+    expected_values = mcp._namespace_from_dict({"c1": None})
+    assert values == expected_values
+
+
 def test_count():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", action="count")
-    mcp_parser.add_source(mcp.DictSource, {"c1": None})
-    mcp_parser.add_source(mcp.DictSource, {"c1": None})
+    mcp_parser.add_source("dict", {"c1": None})
+    mcp_parser.add_source("dict", {"c1": None})
     values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict({"c1": 2})
     assert values == expected_values
@@ -336,8 +366,8 @@ def test_count():
 def test_count_with_default():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", action="count", default=10)
-    mcp_parser.add_source(mcp.DictSource, {"c1": None})
-    mcp_parser.add_source(mcp.DictSource, {"c1": None})
+    mcp_parser.add_source("dict", {"c1": None})
+    mcp_parser.add_source("dict", {"c1": None})
     values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict({"c1": 12})
     assert values == expected_values
@@ -376,33 +406,33 @@ def test_count_missing_with_default():
 def test_priorities():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c")
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=1)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=3)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=1)
+    mcp_parser.add_source("dict", {"c": "v2"}, priority=2)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=3)
     values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict({"c": "v3"})
 
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c")
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=3)
+    mcp_parser.add_source("dict", {"c": "v2"}, priority=2)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=1)
     values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict({"c": "v1"})
 
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c", action="append")
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=1)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=3)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=1)
+    mcp_parser.add_source("dict", {"c": "v2"}, priority=2)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=3)
     values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict({"c": ["v1", "v2", "v3"]})
 
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c", action="append")
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=3)
+    mcp_parser.add_source("dict", {"c": "v2"}, priority=2)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=1)
     values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict({"c": ["v3", "v2", "v1"]})
 
@@ -410,25 +440,25 @@ def test_priorities():
 def test_priorities_with_default():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c", action="append", default=["d"])
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=3)
+    mcp_parser.add_source("dict", {"c": "v2"}, priority=2)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=1)
     values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict({"c": ["d", "v3", "v2", "v1"]})
 
     mcp_parser = mcp.ConfigParser(config_default=["cd"])
     mcp_parser.add_config("c", action="append")
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=3)
+    mcp_parser.add_source("dict", {"c": "v2"}, priority=2)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=1)
     values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict({"c": ["cd", "v3", "v2", "v1"]})
 
     mcp_parser = mcp.ConfigParser(config_default=["cd"])
     mcp_parser.add_config("c", action="append", default=["d"])
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v2"}, priority=2)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=3)
+    mcp_parser.add_source("dict", {"c": "v2"}, priority=2)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=1)
     values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict({"c": ["d", "v3", "v2", "v1"]})
 
@@ -437,9 +467,9 @@ def test_priorities_with_multiple_values_from_source():
     # Multiple values from a single source should retain their ordering
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c", action="extend")
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=3)
-    mcp_parser.add_source(mcp.SimpleArgparseSource, priority=2)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=1)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=3)
+    mcp_parser.add_source("simple_argparse", priority=2)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=1)
     with utm.patch.object(sys, "argv", "prog --c v2a v2b".split()):
         values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict(
@@ -448,9 +478,9 @@ def test_priorities_with_multiple_values_from_source():
 
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c", action="extend")
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=1)
-    mcp_parser.add_source(mcp.SimpleArgparseSource, priority=2)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=3)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=1)
+    mcp_parser.add_source("simple_argparse", priority=2)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=3)
     with utm.patch.object(sys, "argv", "prog --c v2a v2b".split()):
         values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict(
@@ -463,9 +493,9 @@ def test_priorities_stable_sort():
     # order the sources were added
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c", action="extend")
-    mcp_parser.add_source(mcp.DictSource, {"c": "v1"}, priority=0)
-    mcp_parser.add_source(mcp.SimpleArgparseSource, priority=0)
-    mcp_parser.add_source(mcp.DictSource, {"c": "v3"}, priority=0)
+    mcp_parser.add_source("dict", {"c": "v1"}, priority=0)
+    mcp_parser.add_source("simple_argparse", priority=0)
+    mcp_parser.add_source("dict", {"c": "v3"}, priority=0)
     with utm.patch.object(sys, "argv", "prog --c v2a v2b".split()):
         values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict(
@@ -477,7 +507,7 @@ def test_dict_source_none_values():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c", action="store", nargs="?", const="cv")
     mcp_parser.add_source(
-        mcp.DictSource, {"c": "none_value"}, none_values=["none_value"]
+        "dict", {"c": "none_value"}, none_values=["none_value"]
     )
     values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict({"c": "cv"})
@@ -487,9 +517,7 @@ def test_env_source_none_values():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c", action="store", nargs="?", const="cv")
     mcp_parser.add_source(
-        mcp.EnvironmentSource,
-        env_var_prefix="TEST_",
-        none_values=["none_value"],
+        "environment", env_var_prefix="TEST_", none_values=["none_value"],
     )
     with utm.patch.object(os, "environ", {"TEST_C": "none_value"}):
         values = mcp_parser.parse_config()
@@ -501,7 +529,7 @@ def test_json_source_none_values():
     mcp_parser.add_config("c", action="store", nargs="?", const="cv")
     fileobj = io.StringIO('{"c": "none_value"}')
     mcp_parser.add_source(
-        mcp.JsonSource, fileobj=fileobj, none_values=["none_value"],
+        "json", fileobj=fileobj, none_values=["none_value"],
     )
     values = mcp_parser.parse_config()
     assert values == mcp._namespace_from_dict({"c": "cv"})
@@ -1126,7 +1154,7 @@ test_specs.extend(choices_test_specs)
 @pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
 def test_spec_with_dict(spec):
     if spec.dict_source is OMIT_TEST_FOR_SOURCE:
-        pytest.skip("DictSource does not support this test")
+        pytest.skip('the "dict" source does not support this test')
         return
     if spec.expected is Exception:
         with pytest.raises(Exception):
@@ -1141,7 +1169,7 @@ def _test_spec_with_dict(spec):
     dict_source = {}
     if spec.dict_source is not mcp.NOT_GIVEN:
         dict_source["c"] = spec.dict_source
-    mcp_parser.add_source(mcp.DictSource, dict_source)
+    mcp_parser.add_source("dict", dict_source)
     values = mcp_parser.parse_config()
     if spec.expected is mcp.NOT_GIVEN:
         assert not hasattr(values, "c")
@@ -1152,7 +1180,7 @@ def _test_spec_with_dict(spec):
 @pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
 def test_spec_with_env(spec):
     if spec.dict_source is OMIT_TEST_FOR_SOURCE:
-        pytest.skip("EnvSource does not support this test")
+        pytest.skip('the "environment" source does not support this test')
         return
     if spec.expected is Exception:
         with pytest.raises(Exception):
@@ -1178,7 +1206,7 @@ def _test_spec_with_env(spec):
         else:
             env["MULTICONFIG_TEST_C"] = shlex.quote(str(spec.dict_source))
     mcp_parser.add_source(
-        mcp.EnvironmentSource, env_var_prefix="MULTICONFIG_TEST_",
+        "environment", env_var_prefix="MULTICONFIG_TEST_",
     )
     print(f"env={env}")
     with utm.patch.object(os, "environ", env):
@@ -1194,7 +1222,7 @@ def _test_spec_with_env(spec):
 @pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
 def test_spec_with_json(spec):
     if spec.dict_source is OMIT_TEST_FOR_SOURCE:
-        pytest.skip("JsonSource does not support this test")
+        pytest.skip('the "json" source does not support this test')
         return
     if spec.expected is Exception:
         with pytest.raises(Exception):
@@ -1210,7 +1238,7 @@ def _test_spec_with_json(spec):
     if spec.dict_source is not mcp.NOT_GIVEN:
         dict_source["c"] = spec.dict_source
     fileobj = io.StringIO(json.dumps(dict_source, cls=JsonEncoderWithPath))
-    mcp_parser.add_source(mcp.JsonSource, fileobj=fileobj)
+    mcp_parser.add_source("json", fileobj=fileobj)
     values = mcp_parser.parse_config()
     if spec.expected is mcp.NOT_GIVEN:
         assert not hasattr(values, "c")
@@ -1221,7 +1249,7 @@ def _test_spec_with_json(spec):
 @pytest.mark.parametrize("spec", test_specs, ids=[s.id for s in test_specs])
 def test_spec_with_argparse(spec):
     if spec.argparse_source is OMIT_TEST_FOR_SOURCE:
-        pytest.skip("SimpleArgparseSource does not support this test")
+        pytest.skip('the "simple_argparse" source does not support this test')
         return
     if spec.expected is Exception:
         with pytest.raises(Exception):
@@ -1234,7 +1262,7 @@ def _test_spec_with_argparse(spec):
     mcp_parser = mcp.ConfigParser(**spec.config_parser_args)
     mcp_parser.add_config("c", **spec.config_args)
     mcp_parser.add_source(
-        mcp.SimpleArgparseSource, argument_parser_class=RaisingArgumentParser
+        "simple_argparse", argument_parser_class=RaisingArgumentParser
     )
     argv = ["prog", *spec.argparse_source.split()]
     with utm.patch.object(sys, "argv", argv):
@@ -1293,7 +1321,7 @@ def _test_spec_against_argparse(spec):
 
 
 # ------------------------------------------------------------------------------
-# SimpleArgparseSource tests
+# simple_argparse source tests
 # ------------------------------------------------------------------------------
 
 
@@ -1301,7 +1329,7 @@ def test_simple_argparse_source_with_config_added_after_source():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", required=True)
     mcp_parser.add_config("c2", default="v2")
-    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_source("simple_argparse")
     mcp_parser.add_config("c3")
     mcp_parser.add_config("c4", default="v4")
     with utm.patch.object(sys, "argv", "prog --c1 v1 --c3 v3".split()):
@@ -1318,7 +1346,7 @@ def test_simple_argparse_source_with_config_added_after_source():
 def test_simple_argparse_source_with_prog():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_source(
-        mcp.SimpleArgparseSource,
+        "simple_argparse",
         argument_parser_class=RaisingArgumentParser,
         prog="PROG_TEST",
     )
@@ -1330,7 +1358,7 @@ def test_simple_argparse_source_with_prog():
 def test_simple_argparse_source_with_count():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", action="count")
-    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_source("simple_argparse")
     with utm.patch.object(sys, "argv", "prog --c1 --c1".split()):
         values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict({"c1": 2})
@@ -1340,7 +1368,7 @@ def test_simple_argparse_source_with_count():
 def test_simple_argparse_source_with_count_with_default():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", action="count", default=10)
-    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_source("simple_argparse")
     with utm.patch.object(sys, "argv", "prog --c1 --c1".split()):
         values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict({"c1": 12})
@@ -1350,7 +1378,7 @@ def test_simple_argparse_source_with_count_with_default():
 def test_simple_argparse_source_with_count_missing():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", action="count")
-    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_source("simple_argparse")
     with utm.patch.object(sys, "argv", "prog".split()):
         values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict({"c1": None})
@@ -1360,7 +1388,7 @@ def test_simple_argparse_source_with_count_missing():
 def test_simple_argparse_source_with_count_required_missing():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", action="count", required=True)
-    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_source("simple_argparse")
     with utm.patch.object(sys, "argv", "prog".split()):
         with pytest.raises(mcp.RequiredConfigNotFoundError):
             mcp_parser.parse_config()
@@ -1369,7 +1397,7 @@ def test_simple_argparse_source_with_count_required_missing():
 def test_simple_argparse_source_with_count_required_missing_with_default():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", action="count", required=True, default=10)
-    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_source("simple_argparse")
     with utm.patch.object(sys, "argv", "prog".split()):
         with pytest.raises(mcp.RequiredConfigNotFoundError):
             mcp_parser.parse_config()
@@ -1378,7 +1406,7 @@ def test_simple_argparse_source_with_count_required_missing_with_default():
 def test_simple_argparse_source_with_count_missing_with_default():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c1", action="count", default=10)
-    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_source("simple_argparse")
     with utm.patch.object(sys, "argv", "prog".split()):
         values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict({"c1": 10})
@@ -1386,7 +1414,7 @@ def test_simple_argparse_source_with_count_missing_with_default():
 
 
 # ------------------------------------------------------------------------------
-# JsonSource tests
+# "json" source tests
 # ------------------------------------------------------------------------------
 
 
@@ -1400,7 +1428,7 @@ def test_json_source_with_config_added_after_source():
         "c3": "v3"
     }"""
     )
-    mcp_parser.add_source(mcp.JsonSource, fileobj=fileobj)
+    mcp_parser.add_source("json", fileobj=fileobj)
     mcp_parser.add_config("c3")
     mcp_parser.add_config("c4", default="v4")
     values = mcp_parser.parse_config()
@@ -1435,9 +1463,9 @@ def test_multiple_sources():
         "c10": null
     }"""
     )
-    mcp_parser.add_source(mcp.JsonSource, fileobj=fileobj)
-    mcp_parser.add_source(mcp.DictSource, {"c9": 3, "c10": None})
-    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_source("json", fileobj=fileobj)
+    mcp_parser.add_source("dict", {"c9": 3, "c10": None})
+    mcp_parser.add_source("simple_argparse")
     with utm.patch.object(
         sys, "argv", "prog --c5 v5 --c7 [1,2] --c9 4 --c10 --c10".split()
     ):
@@ -1462,14 +1490,10 @@ def test_multiple_sources():
 def test_include_exclude():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config(
-        "c1",
-        action="append",
-        include_sources=(mcp.SimpleArgparseSource, mcp.JsonSource),
+        "c1", action="append", include_sources=("simple_argparse", "json"),
     )
     mcp_parser.add_config(
-        "c2",
-        action="append",
-        exclude_sources=(mcp.DictSource, mcp.JsonSource),
+        "c2", action="append", exclude_sources=("dict", "json"),
     )
     mcp_parser.add_config("c3", action="append")
     fileobj = io.StringIO(
@@ -1479,15 +1503,15 @@ def test_include_exclude():
         "c3": "v3_json"
     }"""
     )
-    mcp_parser.add_source(mcp.JsonSource, fileobj=fileobj)
+    mcp_parser.add_source("json", fileobj=fileobj)
     d = {
         "c1": "v1_dict",
         "c2": "v2_dict",
         "c3": "v3_dict",
     }
-    mcp_parser.add_source(mcp.DictSource, d)
+    mcp_parser.add_source("dict", d)
     argv = "prog --c1 v1_ap --c2 v2_ap --c3 v3_ap".split()
-    mcp_parser.add_source(mcp.SimpleArgparseSource)
+    mcp_parser.add_source("simple_argparse")
     with utm.patch.object(sys, "argv", argv):
         values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict(
