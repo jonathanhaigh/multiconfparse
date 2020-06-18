@@ -11,7 +11,7 @@ with open("README.md") as f:
 setuptools.setup(
     name="multiconfparse",
     packages=setuptools.find_packages(),
-    version="0.0.1",
+    version="0.1.0",
     description="Parser for configuration from multiple sources",
     long_description=long_desc,
     long_description_content_type="text/markdown",
@@ -20,7 +20,7 @@ setuptools.setup(
     author_email="jonathanhaigh@gmail.com",
     license="MIT",
     classifiers=[
-        "Development Status :: 2 - Pre-Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Operating System :: POSIX :: Linux",
