@@ -1060,6 +1060,53 @@ class Action(abc.ABC):
 
 
 class StoreAction(Action):
+    """
+    The ``store`` action simply stores the value from the highest priority
+    mention of a config item. Its behaviour is based on the ``store``
+    :mod:`argparse` action and is the default action.
+
+    Arguments to :meth:`ConfigParser.add_config` have standard behaviour, but
+    note:
+
+    * ``nargs == 0`` is not allowed. The default ``nargs`` value is
+      :data:`None`.
+
+    * The ``const`` argument is only accepted when ``nargs == "?"``.
+
+    Examples:
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1")
+        parser.add_source("dict", {"config_item1": "v1"}, priority=2)
+        parser.add_source("dict", {"config_item1": "v2"}, priority=1)
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": "v1",
+        # }
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1", nargs=2, type=int, default=[1, 2])
+        parser.add_source("simple_argparse")
+        parser.parse_config()
+        #
+        # If the command line looks something like:
+        #   prog some-arg --config-item1 3 4
+        # parse_config() will return something like:
+        #   multiconfparse.Namespace {
+        #       "config_item1": [3, 4],
+        #   }
+        #
+        # If the command line looks something like:
+        #   prog some-arg
+        # parse_config() will return something like:
+        #   multiconfparse.Namespace {
+        #       "config_item1": [1, 2],
+        #   }
+    """
     name = "store"
 
     def __init__(self, const=None, **kwargs):
@@ -1089,6 +1136,44 @@ class StoreAction(Action):
 
 
 class StoreConstAction(Action):
+    """
+    The ``store_const`` action stores the value from the ``const`` argument
+    whenever a config item is mentioned in a source. Its behaviour is based on
+    the ``store_const`` :mod:`argparse` action.
+
+    Notes about the arguments to :meth:`ConfigParser.add_config`:
+
+    * The ``const`` argument is mandatory.
+
+    * ``nargs`` is not accepted as an argument. ``nargs`` is always ``0``
+      for ``store_const`` actions.
+
+    * ``required`` is not accepted as an argument. ``required`` is always
+      :data:`False` for ``store_const`` actions.
+
+    * ``type`` is not accepted as an argument - it doesn't make sense for
+      ``store_const``.
+
+    * ``choices`` is not accepted as an argument - it doesn't make sense for
+      ``store_const``.
+
+    Example:
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config(
+            "config_item1",
+            action="store_const",
+            const="yes",
+            default="no"
+        )
+        parser.add_source("dict", {"config_item1": None})
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": "yes",
+        # }
+    """
     name = "store_const"
 
     def __init__(self, const, **kwargs):
@@ -1107,6 +1192,51 @@ class StoreConstAction(Action):
 
 
 class StoreTrueAction(StoreConstAction):
+    """
+    The ``store_true`` action simply stores the value :data:`True` whenever a
+    config item is mentioned in a source. Its behaviour is based on the
+    ``store_true`` :mod:`argparse` action.
+
+    Notes about the arguments to :meth:`ConfigParser.add_config`:
+
+    * ``const`` is not accepted as an argument - ``const`` is always
+      :data:`True` for ``store_true`` actions.
+
+    * ``nargs`` is not accepted as an argument. ``nargs`` is always ``0``
+      for ``store_true`` actions.
+
+    * ``required`` is not accepted as an argument. ``required`` is always
+      :data:`False` for ``store_true`` actions.
+
+    * ``type`` is not accepted as an argument - it doesn't make sense for
+      ``store_true``.
+
+    * ``choices`` is not accepted as an argument - it doesn't make sense for
+      ``store_true``.
+
+    * The default value for the ``default`` argument is :data:`False`.
+
+    Examples:
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1", action="store_true")
+        parser.add_source("dict", {"config_item1": None})
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": True,
+        # }
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1", action="store_true")
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": False,
+        # }
+    """
     name = "store_true"
 
     def __init__(self, default=False, **kwargs):
@@ -1114,6 +1244,51 @@ class StoreTrueAction(StoreConstAction):
 
 
 class StoreFalseAction(StoreConstAction):
+    """
+    The ``store_false`` action simply stores the value :data:`False` whenever a
+    config item is mentioned in a source. Its behaviour is based on the
+    ``store_false`` :mod:`argparse` action.
+
+    Notes about the arguments to :meth:`ConfigParser.add_config`:
+
+    * ``const`` is not accepted as an argument - ``const`` is always
+      :data:`False` for ``store_false`` actions.
+
+    * ``nargs`` is not accepted as an argument. ``nargs`` is always ``0``
+      for ``store_false`` actions.
+
+    * ``required`` is not accepted as an argument. ``required`` is always
+      :data:`False` for ``store_false`` actions.
+
+    * ``type`` is not accepted as an argument - it doesn't make sense for
+      ``store_false``.
+
+    * ``choices`` is not accepted as an argument - it doesn't make sense for
+      ``store_false``.
+
+    * The default value for the ``default`` argument is :data:`True`.
+
+    Examples:
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1", action="store_false")
+        parser.add_source("dict", {"config_item1": None})
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": False,
+        # }
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1", action="store_false")
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": True,
+        # }
+    """
     name = "store_false"
 
     def __init__(self, default=True, **kwargs):
@@ -1121,6 +1296,57 @@ class StoreFalseAction(StoreConstAction):
 
 
 class AppendAction(Action):
+    """
+    The ``append`` action stores the value for each mention of a config item
+    in a :class:`list`. The :class:`list` is sorted according to the priorities
+    of the mentions of the config item, lower priorities first. The Behaviour
+    is based on the ``append`` :mod:`argparse` action.
+
+    Notes about the arguments to :meth:`ConfigParser.add_config`:
+
+    * ``nargs == 0`` is not allowed. The default ``nargs`` value is
+      :data:`None`.
+
+      When ``nargs >= 1``, ``nargs == "+"`` or ``nargs == "*"``, each value in
+      the :class:`list` for the config item is itself a :class:`list`
+      containing the arguments for a mention of the config item.
+
+    * The ``const`` argument is only accepted when ``nargs == "?"``.
+
+    * The ``default`` argument (if it is given and is not :const:`SUPPRESS`) is
+      used as the initial :class:`list` of values. This means that the
+      ``default`` value is incorporated into the final value for the config
+      item, even if the config item is mentioned in a source.
+
+    Examples:
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1", action="append", default=["v1"])
+        parser.add_source("dict", {"config_item1": "v2"}, priority=2)
+        parser.add_source("dict", {"config_item1": "v3"}, priority=1)
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": ["v1", "v3", "v2"],
+        # }
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config(
+            "config_item1",
+            action="append",
+            nargs="?",
+            const="v0",
+        )
+        parser.parse_config()
+        parser.add_source("dict", {"config_item1": "v1"}, priority=2)
+        parser.add_source("dict", {"config_item1": None}, priority=1)
+        # -> multiconfparse.Namespace {
+        #   "config_item1": ["v0", "v1"],
+        # }
+    """
     name = "append"
 
     def __init__(self, const=None, **kwargs):
@@ -1152,13 +1378,82 @@ class AppendAction(Action):
 
 
 class CountAction(Action):
+    """
+    The ``count`` action stores the number of times a config item is mentioned
+    in the config sources. Its behaviour is based on the ``count``
+    :mod:`argparse` action.
+
+    Notes about the arguments to :meth:`ConfigParser.add_config`:
+
+    * ``nargs`` is not accepted as an argument. ``nargs`` is always ``0``
+      for ``count`` actions.
+
+    * ``const`` is not accepted as an argument - it doesn't make sense for
+      ``count``.
+
+    * ``required`` is not accepted as an argument. ``required`` is always
+      :data:`False` for ``count`` actions.
+
+    * ``type`` is not accepted as an argument - it doesn't make sense for
+      ``count``.
+
+    * ``choices`` is not accepted as an argument - it doesn't make sense for
+      ``count``.
+
+    * If the ``default`` argument is given and is not :const:`SUPPRESS`, it
+      acts as the initial value for the count. I.e. the final value for the
+      config item will be the number of mentions of the config item in the
+      sources, plus the value of ``default``.
+
+      Note that if the config item is not found in any sources and ``default``
+      is not given, it is *not* assumed to be ``0``. The final value for the
+      config item would be :data:`None` in this case.
+
+    Examples:
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1", action="count")
+        parser.add_source("dict", {"config_item1": None})
+        parser.add_source("dict", {"config_item1": None})
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": 2,
+        # }
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1", action="count", default=10)
+        parser.add_source("dict", {"config_item1": None})
+        parser.add_source("dict", {"config_item1": None})
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": 12,
+        # }
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config("config_item1", action="count")
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": None,
+        # }
+
+    """
     name = "count"
 
     def __init__(
         self, **kwargs,
     ):
         super().__init__(
-            nargs=0, type=mentioned_without_value, choices=None, **kwargs
+            nargs=0,
+            type=mentioned_without_value,
+            choices=None,
+            required=False,
+            **kwargs,
         )
 
     def accumulate_processed_value(self, current, new):
@@ -1169,6 +1464,51 @@ class CountAction(Action):
 
 
 class ExtendAction(AppendAction):
+    """
+    The ``extend`` action stores the value for each argument of each mention of
+    a config item in a :class:`list`. The :class:`list` is sorted according to
+    the priorities of the mentions of the config item, lower priorities first.
+    The Behaviour is based on the ``extend`` :mod:`argparse` action, although
+    the behaviour when ``nargs == None`` or ``nargs == "?"`` is different.
+
+    Notes about the arguments to :meth:`ConfigParser.add_config`:
+
+    * ``nargs == 0`` is not allowed. The default ``nargs`` value is "+".
+
+      Unlike the ``append`` action, when ``nargs >= 1``, ``nargs == "+"`` or
+      ``nargs == "*"``, each value in the :class:`list` for the config item is
+      *not* itself a :class:`list` containing the arguments for a mention of
+      the config item.  Each argument of each mention is added separately to
+      the :class:`list` that makes the final value for the config item.
+
+      Unlike the :mod:`argparse` ``extend`` action, when ``nargs == None`` or
+      ``nargs == "?"``, the :mod:`multiconfparse` ``extend`` action behaves
+      exactly like the ``append`` action.
+
+    * The ``const`` argument is only accepted when ``nargs == "?"``.
+
+    * The ``default`` argument (if it is given and is not :const:`SUPPRESS`) is
+      used as the initial :class:`list` of values. This means that the
+      ``default`` value is incorporated into the final value for the config
+      item, even if the config item is mentioned in a source.
+
+    Example:
+
+    .. code-block:: python
+
+        parser = multiconfparse.ConfigParser()
+        parser.add_config(
+            "config_item1",
+            action="extend",
+            default=[["v1", "v2"]]
+        )
+        parser.add_source("dict", {"config_item1": ["v3", "v4"]}, priority=2)
+        parser.add_source("dict", {"config_item1": ["v5"]}, priority=1)
+        parser.parse_config()
+        # -> multiconfparse.Namespace {
+        #   "config_item1": ["v1", "v2", "v5", "v3", "v4"],
+        # }
+    """
     name = "extend"
 
     def __init__(self, **kwargs):

@@ -381,18 +381,10 @@ def test_count_missing():
     assert values == expected_values
 
 
-def test_count_required_missing():
+def test_count_with_required():
     mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c1", action="count", required=True)
-    with pytest.raises(mcp.RequiredConfigNotFoundError):
-        mcp_parser.parse_config()
-
-
-def test_count_required_missing_with_default():
-    mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c1", action="count", required=True, default=10)
-    with pytest.raises(mcp.RequiredConfigNotFoundError):
-        mcp_parser.parse_config()
+    with pytest.raises(Exception):
+        mcp_parser.add_config("c1", action="count", required=True)
 
 
 def test_count_missing_with_default():
@@ -1383,24 +1375,6 @@ def test_simple_argparse_source_with_count_missing():
         values = mcp_parser.parse_config()
     expected_values = mcp._namespace_from_dict({"c1": None})
     assert values == expected_values
-
-
-def test_simple_argparse_source_with_count_required_missing():
-    mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c1", action="count", required=True)
-    mcp_parser.add_source("simple_argparse")
-    with utm.patch.object(sys, "argv", "prog".split()):
-        with pytest.raises(mcp.RequiredConfigNotFoundError):
-            mcp_parser.parse_config()
-
-
-def test_simple_argparse_source_with_count_required_missing_with_default():
-    mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c1", action="count", required=True, default=10)
-    mcp_parser.add_source("simple_argparse")
-    with utm.patch.object(sys, "argv", "prog".split()):
-        with pytest.raises(mcp.RequiredConfigNotFoundError):
-            mcp_parser.parse_config()
 
 
 def test_simple_argparse_source_with_count_missing_with_default():
