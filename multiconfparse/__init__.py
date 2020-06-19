@@ -6,7 +6,6 @@
 import abc
 import argparse
 import copy
-import functools
 import json
 import operator
 import os
@@ -144,7 +143,7 @@ class _MentionedWithoutValue:
 #: where a config item has the value :data:`None` and the case where the
 #: config item does not have a value at all (e.g. for a config item with
 #: ``nargs == 0``. Contrast this with :const:`NOT_GIVEN` which represents a
-# config item that has not been mentioned in the config at all.
+#: config item that has not been mentioned in the config at all.
 MENTIONED_WITHOUT_VALUE = _MentionedWithoutValue()
 
 
@@ -812,23 +811,24 @@ class Action(abc.ABC):
 
     * Inherit from :class:`Action`.
 
-    * Implement the :meth:`accumulate_processed_value` method:
+    * Implement the :meth:`__call__` method:
 
-      .. automethod:: accumulate_processed_value
+      .. automethod:: __call__
         :noindex:
 
-      For example, the :meth:`accumulate_processed_value` method for the
-      ``append`` action is:
+      For example, the :meth:`__call__` method for the ``append`` action is:
 
       .. code-block:: python
 
-        def accumulate_processed_value(self, current, new):
-            assert new is not NOT_GIVEN
-            if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
-                new = self.const
-            if current is NOT_GIVEN:
-                return [new]
-            return current + [new]
+          def __call__(self, namespace, new):
+              assert new is not NOT_GIVEN
+              if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
+                  new = self.const
+              if hasattr(namespace, self.name):
+                  current = getattr(namespace, self.name)
+                  setattr(namespace, self.name, current + [new])
+              else:
+                  setattr(namespace, self.name, [new])
 
     * Have a ``name`` class attribute set to the name of the action that the
       class implements.
@@ -906,10 +906,9 @@ class Action(abc.ABC):
                 )
                 self.const = const
 
-            def accumulate_processed_value(self, current, new):
+            def __call__(self, namespace, new):
                 assert new is MENTIONED_WITHOUT_VALUE
-                return self.const
-
+                setattr(namespace, self.name, self.const)
     """
 
     # Dict of subclasses that handle specific actions. The name of the action
@@ -968,37 +967,59 @@ class Action(abc.ABC):
                 "cannot set both include_sources and exclude_sources"
             )
 
-    def accumulate_raw_value(self, current, raw_new):
-        return self.accumulate_processed_value(
-            current, self._process_value(raw_new)
-        )
+    def accumulate_raw_value(self, namespace, raw_new):
+        return self.__call__(namespace, self._process_value(raw_new))
 
     @abc.abstractmethod
-    def accumulate_processed_value(self, current, new):
+    def __call__(self, namespace, new):
         """
-        Combine a new processed value for this config with any existing value.
+        Combine a new value for this config with any existing value.
 
-        This method must be implemented by subclasses.
+        This method is called once for each mention of the config item in the
+        sources in order to combine the value for the mention with any existing
+        value.
 
-        Arguments:
+        ``namespace`` will be the same :class:`Namespace` object for all calls
+        to this function during a :meth:`ConfigParser.parse_config` call, and
+        it is used to hold the so-far-accumulated value for the config item
+        mentions.
 
-        * ``current``: the current value for this config item (which may be
-          :const:`NOT_GIVEN` or :const:`MENTIONED_WITHOUT_VALUE`).
+        This method's purpose is to combine the current value in ``namespace``
+        with the new value in the ``new`` argument, and write the combined
+        value into back into ``namespace``.
 
-        * ``new``: The new value (which will never be :const:`NOT_GIVEN` but
-          may be :const:`MENTIONED_WITHOUT_VALUE`) to combine with the current
-          value for the config item.
+        The first time this method is called, if the config item has a default
+        value, ``namespace`` will have an attribute for the config item and it
+        will contain the default value; otherwise ``namespace`` will not have
+        an attribute for the config item.
 
-        The ``current`` and ``new`` will have:
+        After the first call to this method, ``namespace`` should have an
+        attribute value for the config item set by the previous call.
 
-        * been coerced to the config item's ``type``;
+        Notes:
 
-        * been checked for ``nargs`` and ``choices`` validity;
+        * The calls to this method are made in order of the priorities of the
+          config item mentions in the sources, lowest priority first.
 
-        * had values for ``nargs == 1`` converted to a single element
-          :class:`list`.
+        * ``new`` may be the value :const:`MENTIONED_WITHOUT_VALUE` if the
+          config item allows mentions without accompanying values.
 
-        Returns: the new combined value, which must not be :const:`NOT_GIVEN`.
+        * ``new`` has already been coerced to the config item's ``type``.
+
+        * ``new`` already been checked for ``choices`` validity.
+
+        * ``new`` has already been processed for ``nargs``:
+
+          * If ``nargs`` is ``0``, ``new`` will be
+            :const:`MENTIONED_WITHOUT_VALUE`.
+
+          * If ``nargs`` is :data:`None`, ``new`` will be a plain value.
+
+          * If ``nargs`` is ``"?"``, ``new`` will either be a plain value or
+            :const:`MENTIONED_WITHOUT_VALUE`.
+
+          * Otherwise, ``new`` will be a :class:`list` containing a value for
+            each the config item's arguments.
         """
 
     def _set_name(self, name):
@@ -1107,17 +1128,19 @@ class StoreAction(Action):
         #       "config_item1": [1, 2],
         #   }
     """
+
     name = "store"
 
     def __init__(self, const=None, **kwargs):
         super().__init__(**kwargs)
         self._set_const(const)
 
-    def accumulate_processed_value(self, current, new):
+    def __call__(self, namespace, new):
         assert new is not NOT_GIVEN
         if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
-            return self.const
-        return new
+            setattr(namespace, self.name, self.const)
+        else:
+            setattr(namespace, self.name, new)
 
     def _set_nargs(self, nargs):
         super()._set_nargs(nargs)
@@ -1174,6 +1197,7 @@ class StoreConstAction(Action):
         #   "config_item1": "yes",
         # }
     """
+
     name = "store_const"
 
     def __init__(self, const, **kwargs):
@@ -1186,9 +1210,9 @@ class StoreConstAction(Action):
         )
         self.const = const
 
-    def accumulate_processed_value(self, current, new):
+    def __call__(self, namespace, new):
         assert new is MENTIONED_WITHOUT_VALUE
-        return self.const
+        setattr(namespace, self.name, self.const)
 
 
 class StoreTrueAction(StoreConstAction):
@@ -1237,6 +1261,7 @@ class StoreTrueAction(StoreConstAction):
         #   "config_item1": False,
         # }
     """
+
     name = "store_true"
 
     def __init__(self, default=False, **kwargs):
@@ -1289,6 +1314,7 @@ class StoreFalseAction(StoreConstAction):
         #   "config_item1": True,
         # }
     """
+
     name = "store_false"
 
     def __init__(self, default=True, **kwargs):
@@ -1347,19 +1373,22 @@ class AppendAction(Action):
         #   "config_item1": ["v0", "v1"],
         # }
     """
+
     name = "append"
 
     def __init__(self, const=None, **kwargs):
         super().__init__(**kwargs)
         self._set_const(const)
 
-    def accumulate_processed_value(self, current, new):
+    def __call__(self, namespace, new):
         assert new is not NOT_GIVEN
         if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
             new = self.const
-        if current is NOT_GIVEN:
-            return [new]
-        return current + [new]
+        if hasattr(namespace, self.name):
+            current = getattr(namespace, self.name)
+            setattr(namespace, self.name, current + [new])
+        else:
+            setattr(namespace, self.name, [new])
 
     def _set_nargs(self, nargs):
         super()._set_nargs(nargs)
@@ -1443,6 +1472,7 @@ class CountAction(Action):
         # }
 
     """
+
     name = "count"
 
     def __init__(
@@ -1456,11 +1486,13 @@ class CountAction(Action):
             **kwargs,
         )
 
-    def accumulate_processed_value(self, current, new):
+    def __call__(self, namespace, new):
         assert new is MENTIONED_WITHOUT_VALUE
-        if current is NOT_GIVEN:
-            return 1
-        return current + 1
+        if hasattr(namespace, self.name):
+            current = getattr(namespace, self.name)
+            setattr(namespace, self.name, current + 1)
+        else:
+            setattr(namespace, self.name, 1)
 
 
 class ExtendAction(AppendAction):
@@ -1509,6 +1541,7 @@ class ExtendAction(AppendAction):
         #   "config_item1": ["v1", "v2", "v5", "v3", "v4"],
         # }
     """
+
     name = "extend"
 
     def __init__(self, **kwargs):
@@ -1516,15 +1549,17 @@ class ExtendAction(AppendAction):
             kwargs["nargs"] = "+"
         super().__init__(**kwargs)
 
-    def accumulate_processed_value(self, current, new):
+    def __call__(self, namespace, new):
         assert new is not NOT_GIVEN
         if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
             new = self.const
         if not isinstance(new, list):
             new = [new]
-        if current is NOT_GIVEN:
-            return new
-        return current + new
+        if hasattr(namespace, self.name):
+            current = getattr(namespace, self.name)
+            setattr(namespace, self.name, current + new)
+        else:
+            setattr(namespace, self.name, new)
 
 
 class ConfigParser:
@@ -1766,47 +1801,47 @@ class ConfigParser:
                 (self.ValueWithPriority(v, source.priority) for v in new_vals)
             )
 
-    def _accumulate_parsed_values(self, parsed_values):
+    def _accumulate_parsed_values(self, namespace, parsed_values):
         for spec in self._config_specs:
+            if not hasattr(parsed_values, spec.name):
+                continue
             # Sort the values according to the priorities of the sources,
             # lowest priority first. When accumulating, sources should give the
             # so-far-accumulated value less priority than a new value.
             #
             # sorted() is guaranteed to use a stable sort so the order in which
             # values are given for any particular source is preserved.
-            raw_values = (
+            raw_values = [
                 v.value
                 for v in sorted(
                     getattr(parsed_values, spec.name),
                     key=operator.attrgetter("priority"),
                 )
-            )
-            accumulated_value = functools.reduce(
-                spec.accumulate_raw_value, raw_values
-            )
-            setattr(parsed_values, spec.name, accumulated_value)
-        return parsed_values
+            ]
+            for raw_value in raw_values:
+                spec.accumulate_raw_value(namespace, raw_value)
 
     def _parse_config(self, check_required):
+        ns = Namespace()
+        self._collect_defaults(ns)
         parsed_values = Namespace()
-        self._collect_defaults(parsed_values)
-        configs_seen = {}
+        self._collect_parsed_values(parsed_values)
+        self._accumulate_parsed_values(ns, parsed_values)
+        if check_required:
+            self._check_required_configs(ns)
+        self._process_missing(ns)
+        return ns
+
+    def _collect_parsed_values(self, ns):
         for source in self._sources:
             new_values = source.parse_config()
-            configs_seen.update(vars(new_values))
-            self._add_parsed_values(parsed_values, new_values, source)
-        self._accumulate_parsed_values(parsed_values)
-        if check_required:
-            self._check_required_configs(configs_seen)
-        self._process_missing(parsed_values)
-        return parsed_values
+            self._add_parsed_values(ns, new_values, source)
 
     def _collect_defaults(self, ns):
         for spec in self._config_specs:
-            default = spec.default
-            if spec.default is SUPPRESS:
-                default = NOT_GIVEN
-            setattr(ns, spec.name, [self.ValueWithPriority(default, -1)])
+            if spec.default is NOT_GIVEN or spec.default is SUPPRESS:
+                continue
+            setattr(ns, spec.name, spec.default)
 
     def partially_parse_config(self):
         """
@@ -1828,15 +1863,15 @@ class ConfigParser:
 
     def _process_missing(self, parsed_values):
         for spec in self._config_specs:
-            if getattr(parsed_values, spec.name) is NOT_GIVEN:
-                if spec.default is SUPPRESS:
-                    delattr(parsed_values, spec.name)
-                else:
-                    setattr(parsed_values, spec.name, None)
+            if (
+                not hasattr(parsed_values, spec.name)
+                and spec.default is not SUPPRESS
+            ):
+                setattr(parsed_values, spec.name, None)
 
-    def _check_required_configs(self, configs_seen):
+    def _check_required_configs(self, namespace):
         for spec in self._config_specs:
-            if spec.required and spec.name not in configs_seen:
+            if spec.required and not hasattr(namespace, spec.name):
                 raise RequiredConfigNotFoundError(
                     f"Did not find value for config item '{spec.name}'"
                 )

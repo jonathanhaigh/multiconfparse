@@ -165,13 +165,14 @@ class UcStoreAction(mcp.Action):
             )
         self.const = const
 
-    def accumulate_processed_value(self, current, new):
+    def __call__(self, namespace, new):
         assert new is not mcp.NOT_GIVEN
         if self.nargs == "?" and new is mcp.MENTIONED_WITHOUT_VALUE:
-            return self.const
-        if isinstance(self.nargs, int) or self.nargs in ("+", "*"):
-            return [arg.upper() for arg in new]
-        return new.upper()
+            setattr(namespace, self.name, self.const)
+        elif isinstance(self.nargs, int) or self.nargs in ("+", "*"):
+            setattr(namespace, self.name, [arg.upper() for arg in new])
+        else:
+            setattr(namespace, self.name, new.upper())
 
 
 class RaisingArgumentParser(argparse.ArgumentParser):
@@ -1200,11 +1201,8 @@ def _test_spec_with_env(spec):
     mcp_parser.add_source(
         "environment", env_var_prefix="MULTICONFIG_TEST_",
     )
-    print(f"env={env}")
     with utm.patch.object(os, "environ", env):
         values = mcp_parser.parse_config()
-    print(f"values={values}")
-    print(f"expected={spec.expected}")
     if spec.expected is mcp.NOT_GIVEN:
         assert not hasattr(values, "c")
     else:
