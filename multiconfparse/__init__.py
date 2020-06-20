@@ -5,7 +5,6 @@
 
 import abc
 import argparse
-import copy
 import json
 import operator
 import os
@@ -1590,7 +1589,7 @@ class ConfigParser:
         __repr__ = __str__
 
     def __init__(self, config_default=NOT_GIVEN):
-        self._config_specs = []
+        self._config_specs = {}
         self._sources = []
         self._parsed_values = {}
         self._global_default = config_default
@@ -1747,10 +1746,12 @@ class ConfigParser:
           raised if the config item is mentioned in a source with an argument
           that is not in ``choices``.
         """
+        if name in self._config_specs:
+            raise ValueError(f"Config item with name '{name}' already exists")
         if "default" not in kwargs and self._global_default is not NOT_GIVEN:
             kwargs["default"] = self._global_default
         spec = Action.create(name=name, **kwargs)
-        self._config_specs.append(spec)
+        self._config_specs[name] = spec
         return spec
 
     def add_source(self, source, *args, **kwargs):
@@ -1783,13 +1784,13 @@ class ConfigParser:
         Return the created config source object.
         """
         source_obj = Source.create(
-            source, copy.copy(self._config_specs), *args, **kwargs,
+            source, list(self._config_specs.values()), *args, **kwargs,
         )
         self._sources.append(source_obj)
         return source
 
     def _add_parsed_values(self, values, new_values, source):
-        for spec in self._config_specs:
+        for spec in self._config_specs.values():
             if not hasattr(new_values, spec.name):
                 continue
             if self._ignore_config_for_source(spec, source):
@@ -1802,7 +1803,7 @@ class ConfigParser:
             )
 
     def _accumulate_parsed_values(self, namespace, parsed_values):
-        for spec in self._config_specs:
+        for spec in self._config_specs.values():
             if not hasattr(parsed_values, spec.name):
                 continue
             # Sort the values according to the priorities of the sources,
@@ -1838,7 +1839,7 @@ class ConfigParser:
             self._add_parsed_values(ns, new_values, source)
 
     def _collect_defaults(self, ns):
-        for spec in self._config_specs:
+        for spec in self._config_specs.values():
             if spec.default is NOT_GIVEN or spec.default is SUPPRESS:
                 continue
             setattr(ns, spec.name, spec.default)
@@ -1862,7 +1863,7 @@ class ConfigParser:
         return self._parse_config(check_required=True)
 
     def _process_missing(self, parsed_values):
-        for spec in self._config_specs:
+        for spec in self._config_specs.values():
             if (
                 not hasattr(parsed_values, spec.name)
                 and spec.default is not SUPPRESS
@@ -1870,7 +1871,7 @@ class ConfigParser:
                 setattr(parsed_values, spec.name, None)
 
     def _check_required_configs(self, namespace):
-        for spec in self._config_specs:
+        for spec in self._config_specs.values():
             if spec.required and not hasattr(namespace, spec.name):
                 raise RequiredConfigNotFoundError(
                     f"Did not find value for config item '{spec.name}'"

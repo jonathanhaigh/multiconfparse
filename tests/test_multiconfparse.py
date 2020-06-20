@@ -528,6 +528,13 @@ def test_json_source_none_values():
     assert values == mcp._namespace_from_dict({"c": "cv"})
 
 
+def test_config_name_clash():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c")
+    with pytest.raises(ValueError):
+        mcp_parser.add_config("c")
+
+
 test_specs = []
 
 nargs_test_specs = []
