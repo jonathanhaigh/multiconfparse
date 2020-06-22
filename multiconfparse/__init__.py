@@ -542,9 +542,12 @@ class ArgparseSource(Source):
         def __init__(self, option_strings, dest, action_obj, priority):
             self._action = action_obj
             self._priority = priority
+            help = action_obj.help
+            if help is SUPPRESS:
+                help = argparse.SUPPRESS
             super().__init__(
                 option_strings,
-                help=action_obj.help,
+                help=help,
                 default=[],
                 dest=dest,
                 nargs=action_obj.nargs,
@@ -1027,8 +1030,8 @@ class Action(abc.ABC):
     def _set_name(self, name):
         if not self._is_python_identifier(name):
             raise ValueError(
-                f"invalid config name '{name}', "
-                "must be a valid Python identifier"
+                f"invalid config name '{name}', must be a valid Python"
+                " identifier"
             )
         self.name = name
 
@@ -1037,7 +1040,7 @@ class Action(abc.ABC):
             dest = name
         if not self._is_python_identifier(dest):
             raise ValueError(
-                f"invalid dest '{dest}', " "must be a valid Python identifier"
+                f"invalid dest '{dest}', must be a valid Python identifier"
             )
         self.dest = dest
 
@@ -1146,7 +1149,7 @@ class StoreAction(Action):
         if const is not None and self.nargs != "?":
             raise ValueError(
                 f"const cannot be supplied to the {self.action_name} action "
-                f'unless nargs is "?"'
+                'unless nargs is "?"'
             )
         self.const = const
 
@@ -1396,7 +1399,7 @@ class AppendAction(Action):
         if const is not None and self.nargs != "?":
             raise ValueError(
                 f"const cannot be supplied to the {self.action_name} action "
-                f'unless nargs is "?"'
+                'unless nargs is "?"'
             )
         self.const = const
 
@@ -1678,7 +1681,9 @@ class ConfigParser:
           config item will be looked for by all sources added to the
           :class:`ConfigParser`.
 
-        * ``help``: the help text/description for the config item.
+        * ``help``: the help text/description for the config item. Set this to
+          :data:`SUPPRESS` to prevent this config item from being mentioned in
+          generated documentation.
 
         The other arguments are all keyword arguments and are passed on to the
         class that implements the config items action and may have different

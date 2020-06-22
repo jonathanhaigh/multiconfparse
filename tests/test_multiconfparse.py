@@ -161,7 +161,7 @@ class UcStoreAction(mcp.Action):
         if const is not None and self.nargs != "?":
             raise ValueError(
                 f"const cannot be supplied to the {self.action} action "
-                f'unless nargs is "?"'
+                'unless nargs is "?"'
             )
         self.const = const
 
@@ -177,8 +177,7 @@ class UcStoreAction(mcp.Action):
 
 class RaisingArgumentParser(argparse.ArgumentParser):
     def exit(self, status=0, message=None):
-        if status:
-            raise ArgparseError(message)
+        raise ArgparseError(message)
 
 
 class JsonEncoderWithPath(json.JSONEncoder):
@@ -609,6 +608,24 @@ def test_dest_with_simple_argparse():
     assert values == expected
 
 
+def test_suppress_help(capfd):
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("config_item1")
+    mcp_parser.add_config("config_item2", help=mcp.SUPPRESS)
+    mcp_parser.add_config("config_item3")
+    mcp_parser.add_source(
+        "simple_argparse", argument_parser_class=RaisingArgumentParser,
+    )
+    argv = "prog --help".split()
+    with utm.patch.object(sys, "argv", argv):
+        with pytest.raises(ArgparseError):
+            mcp_parser.parse_config()
+        out, err = capfd.readouterr()
+        assert "--config-item1" in out
+        assert "--config-item2" not in out
+        assert "--config-item3" in out
+
+
 test_specs = []
 
 nargs_test_specs = []
@@ -800,7 +817,7 @@ for action, nargs in itertools.product(
             id=(
                 f"nargs_with_default_and_global_default, action={action}, "
                 f"nargs={nargs}, args=yes_{nargs}, type={type.__name__},"
-                f"default=yes, global_default=yes"
+                "default=yes, global_default=yes"
             ),
             config_parser_args={"config_default": global_default_value},
             config_args={
@@ -820,7 +837,7 @@ for action, nargs in itertools.product(
             id=(
                 f"nargs_with_default_and_global_default, action={action}, "
                 f"nargs={nargs}, args=no, type={type.__name__}, "
-                f"default=yes, global_default=yes"
+                "default=yes, global_default=yes"
             ),
             config_parser_args={"config_default": global_default_value},
             config_args={
@@ -1102,7 +1119,7 @@ for action, nargs, const in itertools.chain(
         Spec(
             id=(
                 f"suppress, action={action}, nargs={nargs}, args=no, "
-                f"default=suppress"
+                "default=suppress"
             ),
             config_args={
                 "action": action,
@@ -1119,7 +1136,7 @@ for action, nargs, const in itertools.chain(
         Spec(
             id=(
                 f"suppress, action={action}, nargs={nargs}, args=no, "
-                f"default=none, config_default=suppress"
+                "default=none, config_default=suppress"
             ),
             config_args={"action": action, **extra_config_args},
             config_parser_args={"config_default": mcp.SUPPRESS},
