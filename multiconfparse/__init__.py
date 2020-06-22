@@ -38,10 +38,10 @@ class InvalidChoiceError(ParseError):
     Exception raised when a config value is not from a specified set of values.
     """
 
-    def __init__(self, spec, value):
-        choice_str = ",".join((str(c) for c in spec.choices))
+    def __init__(self, action, value):
+        choice_str = ",".join((str(c) for c in action.choices))
         super().__init__(
-            f"invalid choice '{value}' for config item '{spec.name}'; "
+            f"invalid choice '{value}' for config item '{action.name}'; "
             f"valid choices are ({choice_str})"
         )
 
@@ -52,27 +52,27 @@ class InvalidNumberOfValuesError(ParseError):
     not valid.
     """
 
-    def __init__(self, spec, value):
-        assert spec.nargs != "*"
-        if spec.nargs == 1:
+    def __init__(self, action):
+        assert action.nargs != "*"
+        if action.nargs == 1:
             expecting = "1 value"
-        elif isinstance(spec.nargs, int):
-            expecting = f"{spec.nargs} values"
-        elif spec.nargs == "?":
+        elif isinstance(action.nargs, int):
+            expecting = f"{action.nargs} values"
+        elif action.nargs == "?":
             expecting = "up to 1 value"
         else:
-            assert spec.nargs == "+"
+            assert action.nargs == "+"
             expecting = "1 or more values"
 
         super().__init__(
-            f"invalid number of values for config item {spec.name}; "
+            f"invalid number of values for config item {action.name}; "
             f"expecting {expecting}"
         )
 
 
 class InvalidValueForNargs0Error(ParseError):
     """
-    Exception raised when a value recieved for a config item with nargs=0 is
+    Exception raised when a value recieved for an action with nargs=0 is
     not a "none" value.
     """
 
@@ -121,33 +121,8 @@ class _NotGiven:
 #:   and the user has not provided an option at all;
 #:
 #: * the case where a config item has the value :data:`None` and the case
-#:   where the config item not been mentioned at all in the config. Contrast
-#:   this with :const:`MENTIONED_WITHOUT_VALUE` which represents a config
-#:   item that has been mentioned in the config but does not have a value (e.g.
-#:   for a config item with ``nargs == 0``).
+#:   where the config item not been mentioned at all in the config.
 NOT_GIVEN = _NotGiven()
-
-
-class _MentionedWithoutValue:
-    def __str__(self):
-        return "MENTIONED_WITHOUT_VALUE"
-
-    __repr__ = __str__
-
-
-#: Singleton used to represent that a config item has been mentioned in a
-#: config source but does not have a value.
-#:
-#: This is used rather than :data:`None` to distinguish between: the case
-#: where a config item has the value :data:`None` and the case where the
-#: config item does not have a value at all (e.g. for a config item with
-#: ``nargs == 0``. Contrast this with :const:`NOT_GIVEN` which represents a
-#: config item that has not been mentioned in the config at all.
-MENTIONED_WITHOUT_VALUE = _MentionedWithoutValue()
-
-
-def mentioned_without_value(v):
-    return MENTIONED_WITHOUT_VALUE
 
 
 # ------------------------------------------------------------------------------
@@ -186,13 +161,58 @@ class Namespace:
     __repr__ = __str__
 
 
+class ConfigMention:
+    """
+    A :class:`ConfigMention` object represents a single mention of a config
+    item in a source.
+
+    The arguments are:
+
+    * ``action``: the :class:`Action` object that corresponds with the config
+      item being mentioned.
+
+    * ``args``: a :class:`list` of arguments that accompany the config item
+      mention.
+
+    * ``priority``: the priority of the mention. Generally, this is the same as
+      the ``priority`` of the :class:`Source` object that found the mention.
+    """
+
+    def __init__(self, action, args, priority):
+        self.action = action
+        self.args = args
+        self.priority = priority
+
+
 class Source(abc.ABC):
     """
     Abstract base for classes that parse config sources.
 
-    All config source classes should inherit from :class:`Source`, have a
-    ``name`` class attribute containing the name of the source, and provide
-    an implementation for the :meth:`parse_config` method.
+    All config source classes should:
+
+    * Inherit from :class:`Source`.
+
+    * Have a ``name`` class attribute containing the name of the source.
+
+    * Provide an implementation for the :meth:`parse_config` method.
+
+    * Have an :meth:`__init__` method that forwards its ``actions`` and
+      ``priority`` arguments to :meth:`Source.__init__`.
+      :meth:`Source.__init__` will create ``actions`` and ``priority``
+      attributes to make them available to subclass methods.
+
+      ``actions`` is a :class:`dict` with config item names as the keys and
+      :class:`Action` objects as the values. The :class:`Action` attributes
+      that are most useful for source classes to use are:
+
+      * ``name``: the name of the config item to which the :class:`Action`
+        applies. The source class should use this to determine which
+        :class:`Action` object corresponds with each config item mention in the
+        source. The ``name`` atribute of an :class:`Action` has the same value
+        as the key in the ``actions`` :class:`dict`.
+
+      * ``nargs``: this specifies the number of arguments/values that a config
+        item should have when mentioned in the source.
     """
 
     # Dict of subclasses that handle specific config sources. The name of the
@@ -219,9 +239,11 @@ class Source(abc.ABC):
 
         if source not in cls._subclasses:
             raise ValueError(f"unknown source '{source}'")
+
         return cls._subclasses[source](*args, **kwargs)
 
-    def __init__(self, priority=0):
+    def __init__(self, actions, priority=0):
+        self.actions = actions
         self.priority = priority
 
     @abc.abstractmethod
@@ -230,52 +252,16 @@ class Source(abc.ABC):
         Read the values of config items for this source.
 
         This is an abstract method that subclasses must implement to return a
-        :class:`Namespace` object where:
+        :class:`list` containing a :class:`ConfigMention` element for each
+        config item mentioned in the source, in the order in which they
+        appear (unless order makes no sense for the source).
 
-        * The returned :class:`Namespace` has an attribute for each config item
-          found. The name of the attribute for a config item must be the config
-          item's ``name`` as specified by the ``name`` attribute of its
-          :class:`Action`.
+        The implementation of this method will need to make use of the
+        ``actions`` and ``priority`` attributes created by the :class:`Action`
+        base class.
 
-        * The value for each attribute is a list, where each element of the
-          list is a value given for the config item in the source. The elements
-          should be ordered so that values appearing earlier in the source are
-          earlier in the list. In the common case where only a single value for
-          the config item is given in the source, the attribute's value should
-          be a list with a single element.
-
-          For example, if ``config_item1`` is mentioned in the source once with
-          value ``"v1"`` and ``config_item2`` is mentioned in the source twice
-          with values ``"v2"`` and then ``"v3"``, the returned
-          :class:`Namespace` object would have an attribute ``config_item1``
-          with value ``["v1"]`` and an attribute ``config_item2`` with value
-          ``["v2", "v3"]``.
-
-        * If a config item with ``nargs == 0`` or ``nargs == "?"`` is mentioned
-          in the source without a value (or possibly with a source-specific
-          value that means ``None``/``null`` for sources where a value must
-          always be given for a config item), the value for that mention of the
-          config item should be given in the list of values as
-          ``MENTIONED_WITHOUT_VALUE``.
-
-        * If a config item with ``nargs == None``, ``nargs == 1`` or
-          ``nargs == "?"`` is mentioned in the source with a value, the value
-          for that mention of the config item should be given in the list of
-          values as the value itself.
-
-        * If a config item with ``nargs >= 2`` , ``nargs == "*"`` or
-          ``nargs == "+"`` is mentioned in the source, the value for that
-          mention of the config item should be given in the list of values as a
-          list of the values/arguments given in that mention.
-
-          For example, if a config item ``config_item1`` with ``nargs == 2``
-          appears in the source first with values/arguments of ``"v1a"`` and
-          ``"v1b"`` and then again with values/arguments of ``"v2a"`` and
-          ``"v2b"``, the ``config_item1`` attribute in the :class:`Namespace`
-          should have a value of ``[["v1a", "v1b"], ["v2a", "v2b"]]``.
-
-        * None of the values returned should yet have been coerced into the
-          types specified by the user in :meth:`ConfigParser.add_config`.
+        .. autoclass:: ConfigMention
+            :noindex:
         """
 
 
@@ -336,10 +322,9 @@ class DictSource(Source):
       values for config items with ``nargs == 0`` or ``nargs == "?"`` (where
       the ``const`` value should be used rather than the value from the dict).
 
-      The default ``none_values`` is
-      ``[None, multiconfparse.MENTIONED_WITHOUT_VALUE]``. using
-      ``none_values=[multiconfparse.MENTIONED_WITHOUT_VALUE]`` is useful if
-      you want :data:`None` to be treated as a valid config value.
+      The default ``none_values`` is ``[None]``. Using a different
+      ``none_values`` is useful if you want :data:`None` to be treated as a
+      valid config value.
 
     * ``priority`` (optional, keyword): The priority for the source. The
       default priority for a ``dict`` source is ``0``.
@@ -348,36 +333,36 @@ class DictSource(Source):
     name = "dict"
 
     def __init__(
-        self, config_specs, values_dict, none_values=None, priority=0,
+        self, actions, values_dict, none_values=None, priority=0,
     ):
-        super().__init__(priority=priority)
-        self._config_specs = config_specs
+        super().__init__(actions, priority=priority)
         self._dict = values_dict
         if none_values is None:
-            none_values = [None, MENTIONED_WITHOUT_VALUE]
+            none_values = [None]
         self._none_values = none_values
 
     def parse_config(self):
-        ns = Namespace()
-        for spec in self._config_specs:
-            if spec.name not in self._dict:
+        mentions = []
+        for key, value in self._dict.items():
+            action = self.actions.get(key)
+            if action is None:
                 continue
-            value = self._dict[spec.name]
-            if spec.nargs == "?" and value in self._none_values:
-                value = MENTIONED_WITHOUT_VALUE
-            if spec.nargs == "*":
-                if value in self._none_values:
-                    value = []
-                elif not isinstance(value, list):
-                    value = [value]
-            if spec.nargs == "+" and not isinstance(value, list):
-                value = [value]
-            if spec.nargs == 0:
-                if value not in self._none_values:
-                    raise InvalidValueForNargs0Error(value, self._none_values)
-                value = MENTIONED_WITHOUT_VALUE
-            setattr(ns, spec.name, [value])
-        return ns
+            if value in self._none_values and action.nargs in (0, "?", "*"):
+                args = []
+            elif action.nargs == 0:
+                raise InvalidValueForNargs0Error(value, self._none_values)
+            elif (
+                action.nargs in (1, "?")
+                or action.nargs is None
+                or (action.nargs in ("*", "+") and not isinstance(value, list))
+            ):
+                args = [value]
+            elif not isinstance(value, list):
+                raise InvalidNumberOfValuesError(action)
+            else:
+                args = value
+            mentions.append(ConfigMention(action, args, self.priority))
+        return mentions
 
 
 class EnvironmentSource(Source):
@@ -450,10 +435,9 @@ class EnvironmentSource(Source):
     name = "environment"
 
     def __init__(
-        self, config_specs, none_values=None, priority=10, env_var_prefix="",
+        self, actions, none_values=None, priority=10, env_var_prefix="",
     ):
-        super().__init__(priority=priority)
-        self._config_specs = config_specs
+        super().__init__(actions, priority=priority)
 
         if none_values is None:
             none_values = [""]
@@ -461,29 +445,22 @@ class EnvironmentSource(Source):
         self._env_var_prefix = env_var_prefix
 
     def parse_config(self):
-        ns = Namespace()
-        for spec in self._config_specs:
-            env_name = self._config_name_to_env_name(spec.name)
+        mentions = []
+        for action in self.actions.values():
+            env_name = self._config_name_to_env_name(action.name)
             if env_name not in os.environ:
                 continue
             value = os.environ[env_name]
-            if spec.nargs == "?" and value in self._none_values:
-                value = MENTIONED_WITHOUT_VALUE
-            elif spec.nargs == "*":
-                if value in self._none_values:
-                    value = []
-                else:
-                    value = shlex.split(value)
-            elif spec.nargs == "+":
-                value = shlex.split(value)
-            elif spec.nargs == 0:
-                if value not in self._none_values:
-                    raise InvalidValueForNargs0Error(value, self._none_values)
-                value = MENTIONED_WITHOUT_VALUE
-            elif isinstance(spec.nargs, int) and spec.nargs > 1:
-                value = shlex.split(value)
-            setattr(ns, spec.name, [value])
-        return ns
+            if value in self._none_values and action.nargs in (0, "?", "*"):
+                args = []
+            elif action.nargs == 0:
+                raise InvalidValueForNargs0Error(value, self._none_values)
+            elif action.nargs is None or action.nargs in (1, "?"):
+                args = [value]
+            else:
+                args = shlex.split(value)
+            mentions.append(ConfigMention(action, args, self.priority))
+        return mentions
 
     def _config_name_to_env_name(self, config_name):
         return f"{self._env_var_prefix}{config_name.upper()}"
@@ -558,10 +535,39 @@ class ArgparseSource(Source):
 
     name = "argparse"
 
-    def __init__(self, config_specs, priority=20):
-        super().__init__(priority=priority)
-        self._config_specs = config_specs
-        self._parsed_values = None
+    class MulticonfparseAction(argparse.Action):
+        def __init__(self, option_strings, dest, action_obj, priority):
+            self._action = action_obj
+            self._priority = priority
+            super().__init__(
+                option_strings,
+                help=action_obj.help,
+                default=[],
+                dest=dest,
+                nargs=action_obj.nargs,
+            )
+
+        def __call__(self, parser, namespace, values, option_string):
+            nargs = self._action.nargs
+            if values is None:
+                assert nargs == "?"
+                args = []
+            elif not isinstance(values, list):
+                assert nargs is None or nargs == "?"
+                args = [values]
+            else:
+                assert nargs is not None and nargs != "?"
+                if isinstance(nargs, int):
+                    assert len(values) == nargs
+                if nargs == "+":
+                    assert values
+                args = values
+            current = getattr(namespace, self.dest)
+            current.append(ConfigMention(self._action, args, self._priority))
+
+    def __init__(self, actions, priority=20):
+        super().__init__(actions, priority=priority)
+        self._parsed_values = []
 
     def parse_config(self):
         return self._parsed_values
@@ -570,38 +576,22 @@ class ArgparseSource(Source):
         """
         Add arguments to an :class:`argparse.ArgumentParser` for config items.
         """
-        for spec in self._config_specs:
-            arg_name = self._config_name_to_arg_name(spec.name)
-            kwargs = {
-                "help": spec.help,
-                "default": [],
-            }
-            if spec.nargs == 0:
-                kwargs["action"] = "append_const"
-            else:
-                kwargs["action"] = "append"
-
-            if spec.nargs is not None and spec.nargs not in (0, 1):
-                kwargs["nargs"] = spec.nargs
-
-            if spec.nargs in ("?", 0):
-                kwargs["const"] = MENTIONED_WITHOUT_VALUE
-
-            argparse_parser.add_argument(arg_name, **kwargs)
+        for action in self.actions.values():
+            arg_name = self._config_name_to_arg_name(action.name)
+            argparse_parser.add_argument(
+                arg_name,
+                action=self.MulticonfparseAction,
+                dest="multiconfparse_values",
+                action_obj=action,
+                priority=self.priority,
+            )
 
     def notify_parsed_args(self, argparse_namespace):
         """
         Notify the ``argparse`` source of the :class:`argparse.Namespace`
         object returned by :meth:`argparse.ArgumentParser.parse_args`.
         """
-        ns = Namespace()
-        for spec in self._config_specs:
-            if not hasattr(argparse_namespace, spec.name):
-                continue
-            values = getattr(argparse_namespace, spec.name)
-            if values:
-                setattr(ns, spec.name, values)
-        self._parsed_values = ns
+        self._parsed_values = argparse_namespace.multiconfparse_values
 
     @staticmethod
     def _config_name_to_arg_name(config_name):
@@ -665,13 +655,13 @@ class SimpleArgparseSource(Source):
 
     def __init__(
         self,
-        config_specs,
+        actions,
         argument_parser_class=argparse.ArgumentParser,
         priority=20,
         **kwargs,
     ):
-        super().__init__(priority=priority)
-        self._argparse_source = ArgparseSource(config_specs)
+        super().__init__(actions, priority=priority)
+        self._argparse_source = ArgparseSource(actions, priority=priority)
         self._argparse_parser = argument_parser_class(**kwargs)
         self._argparse_source.add_configs_to_argparse_parser(
             self._argparse_parser
@@ -763,14 +753,14 @@ class JsonSource(Source):
 
     def __init__(
         self,
-        config_specs,
+        actions,
         path=None,
         fileobj=None,
         none_values=None,
         json_none_values=None,
         priority=0,
     ):
-        super().__init__(priority=priority)
+        super().__init__(actions, priority=priority)
         if path and fileobj:
             raise ValueError(
                 "JsonSource's 'path' and 'fileobj' options were both "
@@ -784,7 +774,7 @@ class JsonSource(Source):
 
         values_dict = self._get_json(path, fileobj)
         self._dict_source = DictSource(
-            config_specs,
+            actions,
             values_dict,
             none_values=[json.loads(v) for v in json_none_values]
             + none_values,
@@ -810,24 +800,7 @@ class Action(abc.ABC):
 
     * Inherit from :class:`Action`.
 
-    * Implement the :meth:`__call__` method:
-
-      .. automethod:: __call__
-        :noindex:
-
-      For example, the :meth:`__call__` method for the ``append`` action is:
-
-      .. code-block:: python
-
-          def __call__(self, namespace, new):
-              assert new is not NOT_GIVEN
-              if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
-                  new = self.const
-              if hasattr(namespace, self.name):
-                  current = getattr(namespace, self.name)
-                  setattr(namespace, self.name, current + [new])
-              else:
-                  setattr(namespace, self.name, [new])
+    * Implement the :meth:`__call__` method documented below.
 
     * Have a ``name`` class attribute set to the name of the action that the
       class implements.
@@ -852,6 +825,8 @@ class Action(abc.ABC):
 
         * ``help``;
 
+        * ``dest``;
+
         * ``include_sources``;
 
         * ``exclude_sources``.
@@ -872,21 +847,23 @@ class Action(abc.ABC):
 
       .. code-block:: python
 
-        def __init__(self, const, **kwargs):
-            super().__init__(
-                nargs=0,
-                type=mentioned_without_value,
-                required=False,
-                choices=None,
-                **kwargs,
-            )
-            self.const = const
+          def __init__(self, const, **kwargs):
+              super().__init__(
+                  nargs=0,
+                  type=None,
+                  required=False,
+                  choices=None,
+                  **kwargs,
+              )
+              self.const = const
 
       This ensures that an exception is raised if the user specifies ``nargs``,
       ``type``, ``required``, or ``choices`` arguments when adding a
       ``store_const`` action because if the user specifies those arguments they
       will be given twice in the call to :meth:`Action.__init__`.
 
+    .. automethod:: __call__
+      :noindex:
 
     The full example of the class for the ``store_const`` action is:
 
@@ -898,16 +875,16 @@ class Action(abc.ABC):
             def __init__(self, const, **kwargs):
                 super().__init__(
                     nargs=0,
-                    type=mentioned_without_value,
+                    type=None,
                     required=False,
                     choices=None,
                     **kwargs,
                 )
                 self.const = const
 
-            def __call__(self, namespace, new):
-                assert new is MENTIONED_WITHOUT_VALUE
-                setattr(namespace, self.name, self.const)
+                def __call__(self, namespace, args):
+                    assert not args
+                    setattr(namespace, self.dest, self.const)
     """
 
     # Dict of subclasses that handle specific actions. The name of the action
@@ -943,6 +920,7 @@ class Action(abc.ABC):
     def __init__(
         self,
         name,
+        dest=None,
         nargs=None,
         type=str,
         required=False,
@@ -953,8 +931,9 @@ class Action(abc.ABC):
         exclude_sources=None,
     ):
         self._set_name(name)
+        self._set_dest(dest, self.name)
         self._set_nargs(nargs)
-        self._set_type(type)
+        self._set_type(type, nargs)
         self.required = required
         self.default = default
         self.choices = choices
@@ -966,26 +945,30 @@ class Action(abc.ABC):
                 "cannot set both include_sources and exclude_sources"
             )
 
-    def accumulate_raw_value(self, namespace, raw_new):
-        return self.__call__(namespace, self._process_value(raw_new))
+    def accumulate_mention(self, namespace, mention):
+        self._check_nargs_for_mention(mention)
+        self._coerce_types_for_mention(mention)
+        self._validate_choices_for_mention(mention)
+        self.__call__(namespace, mention.args)
 
     @abc.abstractmethod
-    def __call__(self, namespace, new):
+    def __call__(self, namespace, args):
         """
-        Combine a new value for this config with any existing value.
+        Combine the arguments from a mention of this config with any existing
+        value.
 
         This method is called once for each mention of the config item in the
-        sources in order to combine the value for the mention with any existing
-        value.
+        sources in order to combine the arguments from the mention with any
+        existing value.
 
         ``namespace`` will be the same :class:`Namespace` object for all calls
         to this function during a :meth:`ConfigParser.parse_config` call, and
         it is used to hold the so-far-accumulated value for the config item
         mentions.
 
-        This method's purpose is to combine the current value in ``namespace``
-        with the new value in the ``new`` argument, and write the combined
-        value into back into ``namespace``.
+        This method's purpose is to combine the current value for this config
+        item in ``namespace`` with the values in the ``new`` argument, and
+        write the combined value into back into ``namespace``.
 
         The first time this method is called, if the config item has a default
         value, ``namespace`` will have an attribute for the config item and it
@@ -997,39 +980,62 @@ class Action(abc.ABC):
 
         Notes:
 
+        * The name of the attribute in ``namespace`` for this config item is
+          given by this object's ``dest`` attribute.
+
         * The calls to this method are made in order of the priorities of the
           config item mentions in the sources, lowest priority first.
 
-        * ``new`` may be the value :const:`MENTIONED_WITHOUT_VALUE` if the
-          config item allows mentions without accompanying values.
+        * The values in ``new`` have already been coerced to the config item's
+          ``type``.
 
-        * ``new`` has already been coerced to the config item's ``type``.
+        * The values in ``new`` have already been checked for ``choices``
+          validity.
 
-        * ``new`` already been checked for ``choices`` validity.
+        * The number of values in ``new`` has already been checked for
+          ``nargs`` validity.
 
-        * ``new`` has already been processed for ``nargs``:
+        * If no arguments for the config item were given, ``new`` will just be
+          an empty :class:`list`.
 
-          * If ``nargs`` is ``0``, ``new`` will be
-            :const:`MENTIONED_WITHOUT_VALUE`.
+        For example, the :meth:`__call__` method for the ``append`` action is:
 
-          * If ``nargs`` is :data:`None`, ``new`` will be a plain value.
+        .. code-block:: python
 
-          * If ``nargs`` is ``"?"``, ``new`` will either be a plain value or
-            :const:`MENTIONED_WITHOUT_VALUE`.
-
-          * Otherwise, ``new`` will be a :class:`list` containing a value for
-            each the config item's arguments.
+            def __call__(self, namespace, args):
+                current = getattr(namespace, self.dest, [])
+                if self.nargs == "?" and not args:
+                    current.append(self.const)
+                elif self.nargs is None or self.nargs == "?":
+                    assert len(args) == 1
+                    current.extend(args)
+                else:
+                    current.append(args)
+                setattr(namespace, self.dest, current)
         """
 
-    def _set_name(self, name):
-        if re.search(r"[^0-9A-Za-z_]", name) or re.search(
+    @staticmethod
+    def _is_python_identifier(name):
+        return not re.search(r"[^0-9A-Za-z_]", name) and not re.search(
             r"^[^a-zA-Z_]", name
-        ):
+        )
+
+    def _set_name(self, name):
+        if not self._is_python_identifier(name):
             raise ValueError(
                 f"invalid config name '{name}', "
                 "must be a valid Python identifier"
             )
         self.name = name
+
+    def _set_dest(self, dest, name):
+        if dest is None:
+            dest = name
+        if not self._is_python_identifier(dest):
+            raise ValueError(
+                f"invalid dest '{dest}', " "must be a valid Python identifier"
+            )
+        self.dest = dest
 
     def _set_nargs(self, nargs):
         if nargs is None or nargs in ("*", "+", "?") or isinstance(nargs, int):
@@ -1037,46 +1043,28 @@ class Action(abc.ABC):
         else:
             raise ValueError(f"invalid nargs value {nargs}")
 
-    def _set_type(self, type):
-        if not callable(type):
+    def _set_type(self, type, nargs):
+        if nargs != 0 and not callable(type):
             raise TypeError("'type' argument must be callable")
         self.type = type
 
-    def _process_value(self, value):
-        assert value is not NOT_GIVEN
-        if self.nargs == 0:
-            assert value is MENTIONED_WITHOUT_VALUE
-            return value
-        if self.nargs is None:
-            new = self.type(value)
-            self._validate_choice(new)
-            return new
-        if self.nargs == "?":
-            if value is MENTIONED_WITHOUT_VALUE:
-                return value
-            else:
-                new = self.type(value)
-                self._validate_choice(new)
-                return new
-        if self.nargs == 1:
-            new = [self.type(value)]
-            self._validate_choices(new)
-            return new
-        new = [self.type(v) for v in value]
-        self._validate_choices(new)
-        if self.nargs == "+" and not new:
-            raise InvalidNumberOfValuesError(self, new)
-        elif isinstance(self.nargs, int) and len(new) != self.nargs:
-            raise InvalidNumberOfValuesError(self, new)
-        return new
+    def _check_nargs_for_mention(self, mention):
+        if (
+            (isinstance(self.nargs, int) and len(mention.args) != self.nargs)
+            or (self.nargs is None and len(mention.args) != 1)
+            or (self.nargs == "+" and not mention.args)
+        ):
+            raise InvalidNumberOfValuesError(self)
 
-    def _validate_choice(self, value):
-        if self.choices is not None and value not in self.choices:
-            raise InvalidChoiceError(self, value)
+    def _coerce_types_for_mention(self, mention):
+        mention.args = [self.type(a) for a in mention.args]
 
-    def _validate_choices(self, values):
-        for v in values:
-            self._validate_choice(v)
+    def _validate_choices_for_mention(self, mention):
+        if self.choices is None:
+            return
+        for arg in mention.args:
+            if arg not in self.choices:
+                raise InvalidChoiceError(self, arg)
 
 
 class StoreAction(Action):
@@ -1134,12 +1122,14 @@ class StoreAction(Action):
         super().__init__(**kwargs)
         self._set_const(const)
 
-    def __call__(self, namespace, new):
-        assert new is not NOT_GIVEN
-        if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
-            setattr(namespace, self.name, self.const)
+    def __call__(self, namespace, args):
+        if self.nargs == "?" and not args:
+            setattr(namespace, self.dest, self.const)
+        elif self.nargs is None or self.nargs == "?":
+            assert len(args) == 1
+            setattr(namespace, self.dest, args[0])
         else:
-            setattr(namespace, self.name, new)
+            setattr(namespace, self.dest, args)
 
     def _set_nargs(self, nargs):
         super()._set_nargs(nargs)
@@ -1201,17 +1191,13 @@ class StoreConstAction(Action):
 
     def __init__(self, const, **kwargs):
         super().__init__(
-            nargs=0,
-            type=mentioned_without_value,
-            required=False,
-            choices=None,
-            **kwargs,
+            nargs=0, type=None, required=False, choices=None, **kwargs,
         )
         self.const = const
 
-    def __call__(self, namespace, new):
-        assert new is MENTIONED_WITHOUT_VALUE
-        setattr(namespace, self.name, self.const)
+    def __call__(self, namespace, args):
+        assert not args
+        setattr(namespace, self.dest, self.const)
 
 
 class StoreTrueAction(StoreConstAction):
@@ -1375,19 +1361,25 @@ class AppendAction(Action):
 
     name = "append"
 
-    def __init__(self, const=None, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, const=None, default=NOT_GIVEN, **kwargs):
+        # Copy the default value. It will be put into the Namespace returned by
+        # ConfigParser.parse_config() and modified, and those modifications
+        # shouldn't affect the user's copy.
+        if default is not NOT_GIVEN and default is not SUPPRESS:
+            default = list(default)
+        super().__init__(default=default, **kwargs)
         self._set_const(const)
 
-    def __call__(self, namespace, new):
-        assert new is not NOT_GIVEN
-        if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
-            new = self.const
-        if hasattr(namespace, self.name):
-            current = getattr(namespace, self.name)
-            setattr(namespace, self.name, current + [new])
+    def __call__(self, namespace, args):
+        current = getattr(namespace, self.dest, [])
+        if self.nargs == "?" and not args:
+            current.append(self.const)
+        elif self.nargs is None or self.nargs == "?":
+            assert len(args) == 1
+            current.extend(args)
         else:
-            setattr(namespace, self.name, [new])
+            current.append(args)
+        setattr(namespace, self.dest, current)
 
     def _set_nargs(self, nargs):
         super()._set_nargs(nargs)
@@ -1478,20 +1470,15 @@ class CountAction(Action):
         self, **kwargs,
     ):
         super().__init__(
-            nargs=0,
-            type=mentioned_without_value,
-            choices=None,
-            required=False,
-            **kwargs,
+            nargs=0, type=None, choices=None, required=False, **kwargs,
         )
 
-    def __call__(self, namespace, new):
-        assert new is MENTIONED_WITHOUT_VALUE
-        if hasattr(namespace, self.name):
-            current = getattr(namespace, self.name)
-            setattr(namespace, self.name, current + 1)
-        else:
-            setattr(namespace, self.name, 1)
+    def __call__(self, namespace, args):
+        assert not args
+        current = 0
+        if hasattr(namespace, self.dest):
+            current = getattr(namespace, self.dest)
+        setattr(namespace, self.dest, current + 1)
 
 
 class ExtendAction(AppendAction):
@@ -1548,17 +1535,12 @@ class ExtendAction(AppendAction):
             kwargs["nargs"] = "+"
         super().__init__(**kwargs)
 
-    def __call__(self, namespace, new):
-        assert new is not NOT_GIVEN
-        if self.nargs == "?" and new is MENTIONED_WITHOUT_VALUE:
-            new = self.const
-        if not isinstance(new, list):
-            new = [new]
-        if hasattr(namespace, self.name):
-            current = getattr(namespace, self.name)
-            setattr(namespace, self.name, current + new)
-        else:
-            setattr(namespace, self.name, new)
+    def __call__(self, namespace, args):
+        if self.nargs is None or self.nargs == "?":
+            return super().__call__(namespace, args)
+        current = getattr(namespace, self.dest, [])
+        current.extend(args)
+        setattr(namespace, self.dest, current)
 
 
 class ConfigParser:
@@ -1589,7 +1571,7 @@ class ConfigParser:
         __repr__ = __str__
 
     def __init__(self, config_default=NOT_GIVEN):
-        self._config_specs = {}
+        self._actions = {}
         self._sources = []
         self._parsed_values = {}
         self._global_default = config_default
@@ -1674,6 +1656,11 @@ class ConfigParser:
           source, it will not be given an attribute in the :class:`Namespace`
           object returned by :meth:`parse_config`.
 
+        * ``dest`` (optional, keyword): the name of the attribute for the
+          config item in the :class:`Namespace` object returned by
+          :meth:`parse_config`. By default, ``dest`` is set to the name of the
+          config item (``name``).
+
         * ``exclude_sources`` (optional, keyword): a collection of source names
           or :class:`Source` classes that should ignore this config item. This
           argument is mutually exclusive with ``include_sources``. If neither
@@ -1746,13 +1733,13 @@ class ConfigParser:
           raised if the config item is mentioned in a source with an argument
           that is not in ``choices``.
         """
-        if name in self._config_specs:
+        if name in self._actions:
             raise ValueError(f"Config item with name '{name}' already exists")
         if "default" not in kwargs and self._global_default is not NOT_GIVEN:
             kwargs["default"] = self._global_default
-        spec = Action.create(name=name, **kwargs)
-        self._config_specs[name] = spec
-        return spec
+        action = Action.create(name=name, **kwargs)
+        self._actions[name] = action
+        return action
 
     def add_source(self, source, *args, **kwargs):
         """
@@ -1784,65 +1771,45 @@ class ConfigParser:
         Return the created config source object.
         """
         source_obj = Source.create(
-            source, list(self._config_specs.values()), *args, **kwargs,
+            source, self._actions.copy(), *args, **kwargs,
         )
         self._sources.append(source_obj)
         return source
 
-    def _add_parsed_values(self, values, new_values, source):
-        for spec in self._config_specs.values():
-            if not hasattr(new_values, spec.name):
-                continue
-            if self._ignore_config_for_source(spec, source):
-                continue
-            if not hasattr(values, spec.name):
-                setattr(values, spec.name, [])
-            new_vals = getattr(new_values, spec.name)
-            getattr(values, spec.name).extend(
-                (self.ValueWithPriority(v, source.priority) for v in new_vals)
-            )
-
-    def _accumulate_parsed_values(self, namespace, parsed_values):
-        for spec in self._config_specs.values():
-            if not hasattr(parsed_values, spec.name):
-                continue
-            # Sort the values according to the priorities of the sources,
-            # lowest priority first. When accumulating, sources should give the
-            # so-far-accumulated value less priority than a new value.
-            #
-            # sorted() is guaranteed to use a stable sort so the order in which
-            # values are given for any particular source is preserved.
-            raw_values = [
-                v.value
-                for v in sorted(
-                    getattr(parsed_values, spec.name),
-                    key=operator.attrgetter("priority"),
-                )
-            ]
-            for raw_value in raw_values:
-                spec.accumulate_raw_value(namespace, raw_value)
+    def _accumulate_mentions(self, namespace, mentions):
+        # Sort the values according to the priorities of the sources,
+        # lowest priority first. When accumulating, sources should give the
+        # so-far-accumulated value less priority than a new value.
+        #
+        # sorted() is guaranteed to use a stable sort so the order in which
+        # values are given for any particular source is preserved.
+        mentions = sorted(mentions, key=operator.attrgetter("priority"))
+        for mention in mentions:
+            mention.action.accumulate_mention(namespace, mention)
 
     def _parse_config(self, check_required):
         ns = Namespace()
         self._collect_defaults(ns)
-        parsed_values = Namespace()
-        self._collect_parsed_values(parsed_values)
-        self._accumulate_parsed_values(ns, parsed_values)
+        mentions = self._collect_mentions()
+        self._accumulate_mentions(ns, mentions)
         if check_required:
             self._check_required_configs(ns)
         self._process_missing(ns)
         return ns
 
-    def _collect_parsed_values(self, ns):
-        for source in self._sources:
-            new_values = source.parse_config()
-            self._add_parsed_values(ns, new_values, source)
+    def _collect_mentions(self):
+        return [
+            mention
+            for source in self._sources
+            for mention in source.parse_config()
+            if not self._ignore_config_for_source(mention.action, source)
+        ]
 
     def _collect_defaults(self, ns):
-        for spec in self._config_specs.values():
-            if spec.default is NOT_GIVEN or spec.default is SUPPRESS:
+        for action in self._actions.values():
+            if action.default is NOT_GIVEN or action.default is SUPPRESS:
                 continue
-            setattr(ns, spec.name, spec.default)
+            setattr(ns, action.dest, action.default)
 
     def partially_parse_config(self):
         """
@@ -1862,19 +1829,16 @@ class ConfigParser:
         """
         return self._parse_config(check_required=True)
 
-    def _process_missing(self, parsed_values):
-        for spec in self._config_specs.values():
-            if (
-                not hasattr(parsed_values, spec.name)
-                and spec.default is not SUPPRESS
-            ):
-                setattr(parsed_values, spec.name, None)
+    def _process_missing(self, ns):
+        for action in self._actions.values():
+            if not hasattr(ns, action.dest) and action.default is not SUPPRESS:
+                setattr(ns, action.dest, None)
 
     def _check_required_configs(self, namespace):
-        for spec in self._config_specs.values():
-            if spec.required and not hasattr(namespace, spec.name):
+        for action in self._actions.values():
+            if action.required and not hasattr(namespace, action.dest):
                 raise RequiredConfigNotFoundError(
-                    f"Did not find value for config item '{spec.name}'"
+                    f"Did not find value for config item '{action.name}'"
                 )
 
     @staticmethod
@@ -1907,17 +1871,17 @@ def _has_nonnone_attr(obj, attr):
     return _getattr_or_none(obj, attr) is not NOT_GIVEN
 
 
-def _namespace_from_dict(d, config_specs=None):
+def _namespace_from_dict(d, actions=None):
     ns = Namespace()
-    if config_specs is not None:
-        for spec in config_specs:
-            if spec.name in d:
-                setattr(ns, spec.name, d[spec.name])
+    if actions is not None:
+        for action in actions:
+            if action.name in d:
+                setattr(ns, action.dest, d[action.name])
     else:
         for k, v in d.items():
             setattr(ns, k, v)
     return ns
 
 
-def _namespace(obj, config_specs=None):
-    return _namespace_from_dict(vars(obj), config_specs)
+def _namespace(obj, actions=None):
+    return _namespace_from_dict(vars(obj), actions)

@@ -165,14 +165,14 @@ class UcStoreAction(mcp.Action):
             )
         self.const = const
 
-    def __call__(self, namespace, new):
-        assert new is not mcp.NOT_GIVEN
-        if self.nargs == "?" and new is mcp.MENTIONED_WITHOUT_VALUE:
+    def __call__(self, namespace, args):
+        if self.nargs == "?" and not args:
             setattr(namespace, self.name, self.const)
-        elif isinstance(self.nargs, int) or self.nargs in ("+", "*"):
-            setattr(namespace, self.name, [arg.upper() for arg in new])
+        elif self.nargs is None or self.nargs == "?":
+            assert len(args) == 1
+            setattr(namespace, self.name, args[0].upper())
         else:
-            setattr(namespace, self.name, new.upper())
+            setattr(namespace, self.name, [arg.upper() for arg in args])
 
 
 class RaisingArgumentParser(argparse.ArgumentParser):
@@ -533,6 +533,80 @@ def test_config_name_clash():
     mcp_parser.add_config("c")
     with pytest.raises(ValueError):
         mcp_parser.add_config("c")
+
+
+def test_dest_with_store():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", dest="d")
+    mcp_parser.add_config("c2", dest="d")
+    mcp_parser.add_config("c3", dest="d")
+    mcp_parser.add_source("dict", {"c1": "v1"})
+    mcp_parser.add_source("dict", {"c2": "v2"})
+    mcp_parser.add_source("dict", {"c3": "v3"})
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"d": "v3"})
+
+
+def test_dest_with_store_const():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="store_const", const="v1", dest="d")
+    mcp_parser.add_config("c2", action="store_const", const="v2", dest="d")
+    mcp_parser.add_config("c3", action="store_const", const="v3", dest="d")
+    mcp_parser.add_source("dict", {"c1": None})
+    mcp_parser.add_source("dict", {"c2": None})
+    mcp_parser.add_source("dict", {"c3": None})
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"d": "v3"})
+
+
+def test_dest_with_count():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="count", dest="d")
+    mcp_parser.add_config("c2", action="count", dest="d")
+    mcp_parser.add_config("c3", action="count", dest="d")
+    mcp_parser.add_source("dict", {"c1": None})
+    mcp_parser.add_source("dict", {"c2": None})
+    mcp_parser.add_source("dict", {"c3": None})
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"d": 3})
+
+
+def test_dest_with_append():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="append", dest="d")
+    mcp_parser.add_config("c2", action="append", dest="d")
+    mcp_parser.add_config("c3", action="append", dest="d")
+    mcp_parser.add_source("dict", {"c1": "v1"})
+    mcp_parser.add_source("dict", {"c2": "v2"})
+    mcp_parser.add_source("dict", {"c3": "v3"})
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"d": ["v1", "v2", "v3"]})
+
+
+def test_dest_with_extend():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="extend", dest="d")
+    mcp_parser.add_config("c2", action="extend", dest="d")
+    mcp_parser.add_config("c3", action="extend", dest="d")
+    mcp_parser.add_source("dict", {"c1": ["v1", "v2"]})
+    mcp_parser.add_source("dict", {"c2": "v3"})
+    mcp_parser.add_source("dict", {"c3": ["v4", "v5"]})
+    values = mcp_parser.parse_config()
+    expected = mcp._namespace_from_dict({"d": ["v1", "v2", "v3", "v4", "v5"]})
+    assert values == expected
+
+
+def test_dest_with_simple_argparse():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1", action="extend", dest="d")
+    mcp_parser.add_config("c2", action="extend", dest="d")
+    mcp_parser.add_config("c3", action="extend", dest="d")
+    mcp_parser.add_source("simple_argparse")
+    argv = "prog --c1 v1 v2 --c2 v3 --c3 v4 v5".split()
+    with utm.patch.object(sys, "argv", argv):
+        values = mcp_parser.parse_config()
+    expected = mcp._namespace_from_dict({"d": ["v1", "v2", "v3", "v4", "v5"]})
+    assert values == expected
 
 
 test_specs = []
@@ -1164,6 +1238,7 @@ def test_spec_with_dict(spec):
 
 
 def _test_spec_with_dict(spec):
+    print(spec)
     mcp_parser = mcp.ConfigParser(**spec.config_parser_args)
     mcp_parser.add_config("c", **spec.config_args)
     dict_source = {}
@@ -1198,10 +1273,7 @@ def _test_spec_with_env(spec):
             env["MULTICONFIG_TEST_C"] = shlex_join(
                 (str(v) for v in spec.dict_source)
             )
-        elif (
-            spec.dict_source is None
-            or spec.dict_source is mcp.MENTIONED_WITHOUT_VALUE
-        ):
+        elif spec.dict_source is None:
             env["MULTICONFIG_TEST_C"] = ""
         else:
             env["MULTICONFIG_TEST_C"] = shlex.quote(str(spec.dict_source))
