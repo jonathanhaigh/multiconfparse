@@ -68,5 +68,6 @@ html_static_path = ["_static"]
 def autodoc_skip_member(app, what, name, obj, skip, options):
     return skip or name == "__weakref__"
 
+
 def setup(app):
-    app.connect('autodoc-skip-member', autodoc_skip_member)
+    app.connect("autodoc-skip-member", autodoc_skip_member)

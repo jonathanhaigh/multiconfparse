@@ -192,7 +192,7 @@ class Source(abc.ABC):
 
     * Inherit from :class:`Source`.
 
-    * Have a ``name`` class attribute containing the name of the source.
+    * Have a ``source_name`` class attribute containing the name of the source.
 
     * Provide an implementation for the :meth:`parse_config` method.
 
@@ -215,17 +215,19 @@ class Source(abc.ABC):
         item should have when mentioned in the source.
     """
 
-    # Dict of subclasses that handle specific config sources. The name of the
-    # source is the dict item's key and the subclass is the dict item's value.
+    # Dict of subclasses that handle specific config sources. The source_name
+    # of the source is the dict item's key and the subclass is the dict item's
+    # value.
     _subclasses = {}
 
     def __init_subclass__(cls, **kwargs):
         # Automatically register subclasses specialized to handle a particular
-        # config source. For a subclass to be registered it must have the name
-        # of the source it handles in a 'name' class attribute.
+        # config source. For a subclass to be registered it must have the
+        # source_name of the source it handles in a 'source_name' class
+        # attribute.
         super().__init_subclass__(**kwargs)
-        if hasattr(cls, "name"):
-            cls._subclasses[cls.name] = cls
+        if hasattr(cls, "source_name"):
+            cls._subclasses[cls.source_name] = cls
 
     @classmethod
     def create(cls, source, *args, **kwargs):
@@ -233,7 +235,8 @@ class Source(abc.ABC):
         # handle the given source.
 
         # Users can specify the class for the source directly rather than
-        # giving its name. Assume that's what's happening if source isn't a str
+        # giving its source_name. Assume that's what's happening if source
+        # isn't a str
         if not isinstance(source, str):
             return source(*args, **kwargs)
 
@@ -330,7 +333,7 @@ class DictSource(Source):
       default priority for a ``dict`` source is ``0``.
     """
 
-    name = "dict"
+    source_name = "dict"
 
     def __init__(
         self, actions, values_dict, none_values=None, priority=0,
@@ -432,7 +435,7 @@ class EnvironmentSource(Source):
       shell). See the :mod:`shlex` documentation for full details.
     """
 
-    name = "environment"
+    source_name = "environment"
 
     def __init__(
         self, actions, none_values=None, priority=10, env_var_prefix="",
@@ -533,7 +536,7 @@ class ArgparseSource(Source):
       prefixed with ``--``.
     """
 
-    name = "argparse"
+    source_name = "argparse"
 
     class MulticonfparseAction(argparse.Action):
         def __init__(self, option_strings, dest, action_obj, priority):
@@ -651,7 +654,7 @@ class SimpleArgparseSource(Source):
       prefixed with ``--``.
     """
 
-    name = "simple_argparse"
+    source_name = "simple_argparse"
 
     def __init__(
         self,
@@ -749,7 +752,7 @@ class JsonSource(Source):
       without the enclosing JSON array, unless the argument is itself an array.
     """
 
-    name = "json"
+    source_name = "json"
 
     def __init__(
         self,
@@ -802,8 +805,8 @@ class Action(abc.ABC):
 
     * Implement the :meth:`__call__` method documented below.
 
-    * Have a ``name`` class attribute set to the name of the action that the
-      class implements.
+    * Have an ``action_name`` class attribute set to the name of the action
+      that the class implements.
 
     * Have an ``__init__()`` method that accepts arguments passed to
       :meth:`ConfigParser.add_config` calls by the user (except the ``action``
@@ -870,7 +873,7 @@ class Action(abc.ABC):
     .. code-block:: python
 
         class StoreConstAction(Action):
-            name = "store_const"
+            action_name = "store_const"
 
             def __init__(self, const, **kwargs):
                 super().__init__(
@@ -887,17 +890,17 @@ class Action(abc.ABC):
                     setattr(namespace, self.dest, self.const)
     """
 
-    # Dict of subclasses that handle specific actions. The name of the action
-    # is the dict item's key and the subclass is the dict item's value.
+    # Dict of subclasses that handle specific actions. The action_name of the
+    # action is the dict item's key and the subclass is the dict item's value.
     _subclasses = {}
 
     def __init_subclass__(cls, **kwargs):
         # Automatically register subclasses specialized to handle a particular
-        # action. For a subclass to be registered it must have the name of the
-        # action it handles in a 'name' class attribute.
+        # action. For a subclass to be registered it must have the action_name
+        # of the action it handles in an 'action_name' class attribute.
         super().__init_subclass__(**kwargs)
-        if hasattr(cls, "name"):
-            cls._subclasses[cls.name] = cls
+        if hasattr(cls, "action_name"):
+            cls._subclasses[cls.action_name] = cls
 
     @classmethod
     def create(cls, action="store", **kwargs):
@@ -905,7 +908,8 @@ class Action(abc.ABC):
         # handle the given action.
 
         # Users can specify the class for the action directly rather than
-        # giving its name. Assume that's what's happening if action isn't a str
+        # giving its action_name. Assume that's what's happening if action
+        # isn't a str
         if not isinstance(action, str):
             return action(**kwargs)
 
@@ -1116,7 +1120,7 @@ class StoreAction(Action):
         #   }
     """
 
-    name = "store"
+    action_name = "store"
 
     def __init__(self, const=None, **kwargs):
         super().__init__(**kwargs)
@@ -1135,13 +1139,13 @@ class StoreAction(Action):
         super()._set_nargs(nargs)
         if self.nargs == 0:
             raise ValueError(
-                f"nargs == 0 is not valid for the {self.name} action"
+                f"nargs == 0 is not valid for the {self.action_name} action"
             )
 
     def _set_const(self, const):
         if const is not None and self.nargs != "?":
             raise ValueError(
-                f"const cannot be supplied to the {self.name} action "
+                f"const cannot be supplied to the {self.action_name} action "
                 f'unless nargs is "?"'
             )
         self.const = const
@@ -1187,7 +1191,7 @@ class StoreConstAction(Action):
         # }
     """
 
-    name = "store_const"
+    action_name = "store_const"
 
     def __init__(self, const, **kwargs):
         super().__init__(
@@ -1247,7 +1251,7 @@ class StoreTrueAction(StoreConstAction):
         # }
     """
 
-    name = "store_true"
+    action_name = "store_true"
 
     def __init__(self, default=False, **kwargs):
         super().__init__(const=True, default=default, **kwargs)
@@ -1300,7 +1304,7 @@ class StoreFalseAction(StoreConstAction):
         # }
     """
 
-    name = "store_false"
+    action_name = "store_false"
 
     def __init__(self, default=True, **kwargs):
         super().__init__(const=False, default=default, **kwargs)
@@ -1359,7 +1363,7 @@ class AppendAction(Action):
         # }
     """
 
-    name = "append"
+    action_name = "append"
 
     def __init__(self, const=None, default=NOT_GIVEN, **kwargs):
         # Copy the default value. It will be put into the Namespace returned by
@@ -1385,13 +1389,13 @@ class AppendAction(Action):
         super()._set_nargs(nargs)
         if self.nargs == 0:
             raise ValueError(
-                f"nargs == 0 is not valid for the {self.name} action"
+                f"nargs == 0 is not valid for the {self.action_name} action"
             )
 
     def _set_const(self, const):
         if const is not None and self.nargs != "?":
             raise ValueError(
-                f"const cannot be supplied to the {self.name} action "
+                f"const cannot be supplied to the {self.action_name} action "
                 f'unless nargs is "?"'
             )
         self.const = const
@@ -1464,7 +1468,7 @@ class CountAction(Action):
 
     """
 
-    name = "count"
+    action_name = "count"
 
     def __init__(
         self, **kwargs,
@@ -1528,7 +1532,7 @@ class ExtendAction(AppendAction):
         # }
     """
 
-    name = "extend"
+    action_name = "extend"
 
     def __init__(self, **kwargs):
         if "nargs" not in kwargs:
@@ -1846,12 +1850,12 @@ class ConfigParser:
         if config.exclude_sources is not None:
             return (
                 source.__class__ in config.exclude_sources
-                or source.name in config.exclude_sources
+                or source.source_name in config.exclude_sources
             )
         if config.include_sources is not None:
             return (
                 source.__class__ not in config.include_sources
-                and source.name not in config.include_sources
+                and source.source_name not in config.include_sources
             )
         return False
 
