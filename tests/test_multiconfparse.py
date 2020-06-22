@@ -495,38 +495,6 @@ def test_priorities_stable_sort():
     )
 
 
-def test_dict_source_none_values():
-    mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c", action="store", nargs="?", const="cv")
-    mcp_parser.add_source(
-        "dict", {"c": "none_value"}, none_values=["none_value"]
-    )
-    values = mcp_parser.parse_config()
-    assert values == mcp._namespace_from_dict({"c": "cv"})
-
-
-def test_env_source_none_values():
-    mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c", action="store", nargs="?", const="cv")
-    mcp_parser.add_source(
-        "environment", env_var_prefix="TEST_", none_values=["none_value"],
-    )
-    with utm.patch.object(os, "environ", {"TEST_C": "none_value"}):
-        values = mcp_parser.parse_config()
-    assert values == mcp._namespace_from_dict({"c": "cv"})
-
-
-def test_json_source_none_values():
-    mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c", action="store", nargs="?", const="cv")
-    fileobj = io.StringIO('{"c": "none_value"}')
-    mcp_parser.add_source(
-        "json", fileobj=fileobj, none_values=["none_value"],
-    )
-    values = mcp_parser.parse_config()
-    assert values == mcp._namespace_from_dict({"c": "cv"})
-
-
 def test_config_name_clash():
     mcp_parser = mcp.ConfigParser()
     mcp_parser.add_config("c")
@@ -591,19 +559,6 @@ def test_dest_with_extend():
     mcp_parser.add_source("dict", {"c2": "v3"})
     mcp_parser.add_source("dict", {"c3": ["v4", "v5"]})
     values = mcp_parser.parse_config()
-    expected = mcp._namespace_from_dict({"d": ["v1", "v2", "v3", "v4", "v5"]})
-    assert values == expected
-
-
-def test_dest_with_simple_argparse():
-    mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c1", action="extend", dest="d")
-    mcp_parser.add_config("c2", action="extend", dest="d")
-    mcp_parser.add_config("c3", action="extend", dest="d")
-    mcp_parser.add_source("simple_argparse")
-    argv = "prog --c1 v1 v2 --c2 v3 --c3 v4 v5".split()
-    with utm.patch.object(sys, "argv", argv):
-        values = mcp_parser.parse_config()
     expected = mcp._namespace_from_dict({"d": ["v1", "v2", "v3", "v4", "v5"]})
     assert values == expected
 
@@ -1461,24 +1416,17 @@ def test_simple_argparse_source_with_count_with_default():
     assert values == expected_values
 
 
-def test_simple_argparse_source_with_count_missing():
+def test_simple_argparse_source_with_dest():
     mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c1", action="count")
+    mcp_parser.add_config("c1", action="extend", dest="d")
+    mcp_parser.add_config("c2", action="extend", dest="d")
+    mcp_parser.add_config("c3", action="extend", dest="d")
     mcp_parser.add_source("simple_argparse")
-    with utm.patch.object(sys, "argv", "prog".split()):
+    argv = "prog --c1 v1 v2 --c2 v3 --c3 v4 v5".split()
+    with utm.patch.object(sys, "argv", argv):
         values = mcp_parser.parse_config()
-    expected_values = mcp._namespace_from_dict({"c1": None})
-    assert values == expected_values
-
-
-def test_simple_argparse_source_with_count_missing_with_default():
-    mcp_parser = mcp.ConfigParser()
-    mcp_parser.add_config("c1", action="count", default=10)
-    mcp_parser.add_source("simple_argparse")
-    with utm.patch.object(sys, "argv", "prog".split()):
-        values = mcp_parser.parse_config()
-    expected_values = mcp._namespace_from_dict({"c1": 10})
-    assert values == expected_values
+    expected = mcp._namespace_from_dict({"d": ["v1", "v2", "v3", "v4", "v5"]})
+    assert values == expected
 
 
 # ------------------------------------------------------------------------------
@@ -1504,6 +1452,72 @@ def test_json_source_with_config_added_after_source():
         {"c1": "v1", "c2": "v2", "c3": None, "c4": "v4"}
     )
     assert values == expected_values
+
+
+def test_json_source_none_values():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="store", nargs="?", const="cv")
+    fileobj = io.StringIO('{"c": "none_value"}')
+    mcp_parser.add_source(
+        "json", fileobj=fileobj, none_values=["none_value"],
+    )
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": "cv"})
+
+
+# ------------------------------------------------------------------------------
+# environment source tests
+# ------------------------------------------------------------------------------
+
+
+def test_env_source_none_values():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="store", nargs="?", const="cv")
+    mcp_parser.add_source(
+        "environment", env_var_prefix="TEST_", none_values=["none_value"],
+    )
+    with utm.patch.object(os, "environ", {"TEST_C": "none_value"}):
+        values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": "cv"})
+
+
+def test_env_source_force_upper_true():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1")
+    mcp_parser.add_config("c2")
+    mcp_parser.add_source(
+        "environment", env_var_prefix="TEST_", env_var_force_upper=True
+    )
+    with utm.patch.object(os, "environ", {"TEST_C1": "v1", "TEST_c2": "v2"}):
+        values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c1": "v1", "c2": None})
+
+
+def test_env_source_force_upper_false():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c1")
+    mcp_parser.add_config("c2")
+    mcp_parser.add_source(
+        "environment", env_var_prefix="TEST_", env_var_force_upper=False
+    )
+    with utm.patch.object(os, "environ", {"TEST_C1": "v1", "TEST_c2": "v2"}):
+        values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c1": None, "c2": "v2"})
+
+
+# ------------------------------------------------------------------------------
+# dict source tests
+# ------------------------------------------------------------------------------
+
+
+def test_dict_source_none_values():
+    mcp_parser = mcp.ConfigParser()
+    mcp_parser.add_config("c", action="store", nargs="?", const="cv")
+    mcp_parser.add_source(
+        "dict", {"c": "none_value"}, none_values=["none_value"]
+    )
+    values = mcp_parser.parse_config()
+    assert values == mcp._namespace_from_dict({"c": "cv"})
 
 
 # ------------------------------------------------------------------------------

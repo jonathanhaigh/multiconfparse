@@ -418,11 +418,10 @@ class EnvironmentSource(Source):
       environment variable names that the source will look for.  The default
       value is ``""``.
 
-    Note that:
+    * ``env_var_force_upper`` (optional, keyword): force the environment
+      variable name to be in upper case. Default is ``True``.
 
-    * The name of the environment variable for a config item is the config
-      item's name, converted to upper case, then prefixed with
-      ``env_var_prefix``.
+    Note that:
 
     * Values in environment variables for config items with ``nargs == 0`` or
       ``nargs == "?"`` (where the ``const`` value should be used rather than
@@ -438,7 +437,12 @@ class EnvironmentSource(Source):
     source_name = "environment"
 
     def __init__(
-        self, actions, none_values=None, priority=10, env_var_prefix="",
+        self,
+        actions,
+        none_values=None,
+        priority=10,
+        env_var_prefix="",
+        env_var_force_upper=True,
     ):
         super().__init__(actions, priority=priority)
 
@@ -446,6 +450,7 @@ class EnvironmentSource(Source):
             none_values = [""]
         self._none_values = none_values
         self._env_var_prefix = env_var_prefix
+        self._env_var_force_upper = env_var_force_upper
 
     def parse_config(self):
         mentions = []
@@ -466,7 +471,9 @@ class EnvironmentSource(Source):
         return mentions
 
     def _config_name_to_env_name(self, config_name):
-        return f"{self._env_var_prefix}{config_name.upper()}"
+        if self._env_var_force_upper:
+            config_name = config_name.upper()
+        return f"{self._env_var_prefix}{config_name}"
 
 
 class ArgparseSource(Source):
